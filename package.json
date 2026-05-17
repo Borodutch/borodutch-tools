@@ -6,7 +6,7 @@
     "apps/*"
   ],
   "engines": {
-    "node": "22.x"
+    "node": "23.x"
   },
   "scripts": {
     "dev": "bun --filter @borodutch-tools/frontend dev",
