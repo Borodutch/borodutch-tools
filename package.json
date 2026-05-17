@@ -5,6 +5,9 @@
   "workspaces": [
     "apps/*"
   ],
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "bun --filter @borodutch-tools/frontend dev",
     "build": "bun --filter @borodutch-tools/frontend build",
