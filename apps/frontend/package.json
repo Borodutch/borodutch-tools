@@ -1,0 +1,23 @@
+{
+  "name": "@borodutch-tools/frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "check": "tsc -b",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "preact": "^10.29.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.5",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/node": "^24.12.3",
+    "tailwindcss": "^4.1.17",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  }
+}

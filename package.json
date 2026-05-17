@@ -1,0 +1,15 @@
+{
+  "name": "borodutch-tools",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "bun --filter @borodutch-tools/frontend dev",
+    "build": "bun --filter @borodutch-tools/frontend build",
+    "preview": "bun --filter @borodutch-tools/frontend preview",
+    "check": "bun --filter @borodutch-tools/frontend check"
+  },
+  "packageManager": "bun@1.2.4"
+}
