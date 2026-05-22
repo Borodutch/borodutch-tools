@@ -7,6 +7,8 @@ Monorepo for public tools at tools.borodutch.com.
 - apps/frontend - Preact, TypeScript, Vite, and Tailwind frontend.
 - apps/backend - Bun/TypeScript API that serves the frontend and processes $bdtch snapshot claims.
 
+The frontend exposes tools through shared navigation. The current tools are the $bdtch snapshot claim flow and the Base Sepolia $testcoin one-year lock flow.
+
 ## Commands
 
 - bun install
@@ -49,6 +51,8 @@ Required runtime environment:
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 
 Private keys must only be supplied through deployment secrets. They must not be committed, exposed to the frontend, or logged.
+
+The frontend lock view reads `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS`, `VITE_TESTCOIN_LOCK_ADDRESS`, and optionally `VITE_BASE_SEPOLIA_RPC_URL` / `VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE`.
 
 ## Deployment
 
