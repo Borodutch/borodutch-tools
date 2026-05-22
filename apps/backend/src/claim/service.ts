@@ -1,0 +1,246 @@
+import { randomBytes, randomUUID } from 'node:crypto'
+import { calculateClaimAmountRaw, parsePositiveRawAmount } from './math.ts'
+import { buildClaimMessage, digestMessage } from './message.ts'
+import { verifySolanaSignature } from './signature.ts'
+import {
+  BASE_SEPOLIA_CHAIN_ID,
+  DOMAIN,
+  PURPOSE,
+  type ClaimRecord,
+  type ClaimStore,
+  type TokenSender,
+} from './types.ts'
+import { normalizeEvmAddress, normalizeSolanaAddress } from './validation.ts'
+
+const challengeTtlMs = 15 * 60 * 1000
+
+export class ClaimService {
+  constructor(
+    private readonly store: ClaimStore,
+    private readonly sender: TokenSender,
+    private readonly claimPoolRaw: bigint,
+  ) {}
+
+  getConfig(missingRuntimeEnv: string[]) {
+    const snapshot = this.store.getSnapshot()
+
+    return {
+      app: DOMAIN,
+      purpose: PURPOSE,
+      chainId: BASE_SEPOLIA_CHAIN_ID,
+      snapshot,
+      claimPoolRaw: this.claimPoolRaw.toString(),
+      missingRuntimeEnv,
+    }
+  }
+
+  async getAllocation(solanaAddressInput: unknown) {
+    const solanaAddress = normalizeSolanaAddress(solanaAddressInput)
+    const holder = this.store.getHolder(solanaAddress)
+    const existingClaim = await this.store.getClaimBySolana(solanaAddress)
+
+    if (!holder) {
+      return { eligible: false, solanaAddress, existingClaim: serializeClaim(existingClaim) }
+    }
+
+    const claimAmountRaw = calculateClaimAmountRaw({
+      claimPoolRaw: this.claimPoolRaw,
+      holderBdtchRaw: BigInt(holder.amountRaw),
+      snapshotSupplyRaw: BigInt(this.store.getSnapshot().supplyRaw),
+    })
+
+    return {
+      eligible: claimAmountRaw > 0n,
+      solanaAddress,
+      holder,
+      claimAmountRaw: claimAmountRaw.toString(),
+      snapshot: this.store.getSnapshot(),
+      existingClaim: serializeClaim(existingClaim),
+    }
+  }
+
+  async createChallenge(input: { solanaAddress: unknown; evmRecipient: unknown }) {
+    const solanaAddress = normalizeSolanaAddress(input.solanaAddress)
+    const evmRecipient = normalizeEvmAddress(input.evmRecipient)
+    const holder = this.store.getHolder(solanaAddress)
+
+    if (!holder) {
+      throw new ClaimError('not_eligible', 'Solana wallet is not eligible in the $bdtch snapshot.')
+    }
+
+    const [existingSolanaClaim, existingRecipientClaim] = await Promise.all([
+      this.store.getClaimBySolana(solanaAddress),
+      this.store.getClaimByRecipient(evmRecipient),
+    ])
+
+    if (existingSolanaClaim) {
+      throw new ClaimError('already_claimed', 'This Solana wallet already has a claim.', serializeClaim(existingSolanaClaim))
+    }
+
+    if (existingRecipientClaim) {
+      throw new ClaimError('recipient_already_used', 'This EVM recipient was already used for a claim.')
+    }
+
+    const claimAmountRaw = calculateClaimAmountRaw({
+      claimPoolRaw: this.claimPoolRaw,
+      holderBdtchRaw: BigInt(holder.amountRaw),
+      snapshotSupplyRaw: BigInt(this.store.getSnapshot().supplyRaw),
+    })
+
+    if (claimAmountRaw <= 0n) {
+      throw new ClaimError('zero_allocation', 'This wallet has a zero $testcoin allocation.')
+    }
+
+    const nonce = randomBytes(18).toString('hex')
+    const message = buildClaimMessage({
+      snapshot: this.store.getSnapshot(),
+      solanaAddress,
+      evmRecipient,
+      holderBdtchRaw: holder.amountRaw,
+      claimAmountRaw: claimAmountRaw.toString(),
+      nonce,
+    })
+
+    const challenge = await this.store.createChallenge({
+      id: randomUUID(),
+      nonce,
+      solanaAddress,
+      evmRecipient,
+      holderBdtchRaw: holder.amountRaw,
+      claimAmountRaw: claimAmountRaw.toString(),
+      message,
+      messageDigest: digestMessage(message),
+      expiresAt: new Date(Date.now() + challengeTtlMs),
+    })
+
+    return {
+      challengeId: challenge.id,
+      solanaAddress,
+      evmRecipient,
+      claimAmountRaw: challenge.claimAmountRaw,
+      holderBdtchRaw: challenge.holderBdtchRaw,
+      expiresAt: challenge.expiresAt.toISOString(),
+      message: challenge.message,
+      messageDigest: challenge.messageDigest,
+    }
+  }
+
+  async submitClaim(input: {
+    challengeId: unknown
+    solanaAddress: unknown
+    evmRecipient: unknown
+    signatureBase58: unknown
+  }) {
+    if (typeof input.challengeId !== 'string') {
+      throw new ClaimError('invalid_challenge', 'Challenge id is required.')
+    }
+
+    if (typeof input.signatureBase58 !== 'string' || input.signatureBase58.length < 32) {
+      throw new ClaimError('invalid_signature', 'Signature is required.')
+    }
+
+    const solanaAddress = normalizeSolanaAddress(input.solanaAddress)
+    const evmRecipient = normalizeEvmAddress(input.evmRecipient)
+    const challenge = await this.store.getChallenge(input.challengeId)
+
+    if (!challenge) {
+      throw new ClaimError('invalid_challenge', 'Claim challenge was not found.')
+    }
+
+    if (challenge.usedAt || challenge.expiresAt.getTime() < Date.now()) {
+      throw new ClaimError('expired_challenge', 'Claim challenge expired. Create a new message and sign again.')
+    }
+
+    if (challenge.solanaAddress !== solanaAddress || challenge.evmRecipient !== evmRecipient) {
+      throw new ClaimError('challenge_mismatch', 'Signed challenge does not match the submitted wallet or recipient.')
+    }
+
+    if (
+      !verifySolanaSignature({
+        solanaAddress,
+        message: challenge.message,
+        signatureBase58: input.signatureBase58,
+      })
+    ) {
+      throw new ClaimError('invalid_signature', 'Solana signature does not verify for this message and wallet.')
+    }
+
+    const pending = await this.store.createPendingClaim({
+      id: randomUUID(),
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      solanaAddress,
+      evmRecipient,
+      holderBdtchRaw: challenge.holderBdtchRaw,
+      claimAmountRaw: challenge.claimAmountRaw,
+      messageDigest: challenge.messageDigest,
+      signatureBase58: input.signatureBase58,
+      txHash: null,
+      status: 'pending',
+      errorCode: null,
+    })
+
+    await this.store.markChallengeUsed(challenge.id)
+
+    if (!pending.inserted) {
+      return { claim: serializeClaim(pending.claim)!, idempotent: true }
+    }
+
+    try {
+      const txHash = await this.sender.sendTestcoin({
+        recipient: evmRecipient,
+        amountRaw: BigInt(challenge.claimAmountRaw),
+        idempotencyKey: pending.claim.id,
+      })
+      const claim = await this.store.updateClaimSent(pending.claim.id, txHash)
+      return { claim: serializeClaim(claim)!, idempotent: false }
+    } catch {
+      const claim = await this.store.updateClaimFailed(pending.claim.id, 'chain_send_failed')
+      throw new ClaimError(
+        'chain_send_failed',
+        'The claim was recorded but the Base Sepolia transfer failed. It will not be resent automatically.',
+        serializeClaim(claim),
+      )
+    }
+  }
+}
+
+export class ClaimError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message)
+  }
+}
+
+export function createClaimService(input: {
+  store: ClaimStore
+  sender: TokenSender
+  env: Record<string, string | undefined>
+}) {
+  return new ClaimService(
+    input.store,
+    input.sender,
+    parsePositiveRawAmount(input.env.TESTCOIN_CLAIM_POOL_RAW, 'TESTCOIN_CLAIM_POOL_RAW'),
+  )
+}
+
+function serializeClaim(claim: ClaimRecord | undefined) {
+  if (!claim) {
+    return undefined
+  }
+
+  return {
+    id: claim.id,
+    solanaAddress: claim.solanaAddress,
+    evmRecipient: claim.evmRecipient,
+    claimAmountRaw: claim.claimAmountRaw,
+    status: claim.status,
+    txHash: claim.txHash,
+    errorCode: claim.errorCode,
+    createdAt: claim.createdAt.toISOString(),
+    updatedAt: claim.updatedAt.toISOString(),
+  }
+}
