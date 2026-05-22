@@ -6,6 +6,7 @@ Monorepo for public tools at tools.borodutch.com.
 
 - apps/frontend - Preact, TypeScript, Vite, and Tailwind frontend.
 - apps/backend - Bun/TypeScript API that serves the frontend and processes $bdtch snapshot claims.
+- contracts - Foundry Solidity contracts and tests.
 
 The frontend exposes tools through shared navigation. The current tools are the $bdtch snapshot claim flow and the Base Sepolia $testcoin one-year lock flow.
 
@@ -19,6 +20,7 @@ The frontend exposes tools through shared navigation. The current tools are the 
 - bun run build
 - bun run start
 - bun run preview
+- forge test
 
 ## $bdtch snapshot claim flow
 
@@ -65,3 +67,8 @@ bun run start
 ```
 
 `bun run start` launches the backend, which serves the built frontend from `apps/frontend/dist` and exposes `/api/claim/*`.
+
+The frontend also includes the Base Sepolia $testcoin one-year lock flow.
+Configure it with `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS` and
+`VITE_TESTCOIN_LOCK_ADDRESS`. Deployment details for the lock contract live in
+`docs/testcoin-locking-contract.md`.
