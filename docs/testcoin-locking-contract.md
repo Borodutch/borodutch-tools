@@ -75,15 +75,21 @@ Store this metadata after deployment:
 - chain id `84532`
 - block number
 
-## Base Sepolia deployment 2026-05-23
+## Base Sepolia production deployment 2026-05-23
+
+- token: `0x763c030fc5c0db724855123c37cfa36631116f59`
+- lock contract: `0x8824d182e1dd2d3aeadbfc45beaa374067c11dee`
+- deployer: `0xC2142A4918754abe5975ecD486A66DfeBA39A419`
+- token supply: `1000000000000000000000000000`
+- token deployment tx: `0x7024b7b0444e81732b66b148a446027e60e92a056ded22aba094880b271f0410`
+- lock deployment tx: `0x7f83f8f7f0cc27e050d12a9c750fd8518450720c258ec9e2674a507157d44aa6`
+- chain id: `84532`
+
+Smoke-tested earlier deployment:
 
 - token: `0xc2f48ed979e106e2feeb5acd0fe721daf5f33adf`
 - lock contract: `0x0f053b5b292292e3433ee7d24131afdc1729ec4b`
-- deployer: `0xC2142A4918754abe5975ecD486A66DfeBA39A419`
-- token supply: `1000000000000000000000000000`
-- token deployment tx: `0xfd065f9f2623e50440242b8e6e3503c4a1fd07a8080825d6527ae445df56669e`
-- lock deployment tx: `0x74b38962126c3d9463c351c961e6e8d62bb1098a8ed5a18d1543ea08d32f51ef`
-- chain id: `84532`
+- lock smoke tx: `0x8dcf2b8ca1e62103958a2fbba83d0fe42fbe8824824fe2b6bb125008cf184357`
 
 ## Validation
 
