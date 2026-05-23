@@ -59,10 +59,11 @@ export function App() {
         return
       }
 
-      const connected = accountOverride || account || (await getConnectedAccount(provider)) || ''
+      const connected = accountOverride === undefined ? account || (await getConnectedAccount(provider)) || '' : accountOverride
       if (!connected) {
         setStatus('Connect an EVM wallet.')
         setWalletState(null)
+        if (account) setAccount('')
         return
       }
 
