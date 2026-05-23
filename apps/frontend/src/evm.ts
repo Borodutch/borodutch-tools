@@ -28,6 +28,8 @@ export type LockPosition = {
 
 const BASE_SEPOLIA_CHAIN_ID = '0x14a34'
 const BASE_SEPOLIA_CHAIN_ID_DECIMAL = 84532
+const DEFAULT_BASE_SEPOLIA_TESTCOIN_ADDRESS = '0x763c030fc5c0db724855123c37cfa36631116f59'
+const DEFAULT_TESTCOIN_LOCK_ADDRESS = '0x8824d182e1dd2d3aeadbfc45beaa374067c11dee'
 const ZERO_WORD = '0'.repeat(64)
 
 const selectors = {
@@ -50,8 +52,8 @@ const selectors = {
 
 export function getLockConfig(): LockConfig {
   return {
-    tokenAddress: import.meta.env.VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS ?? '',
-    lockAddress: import.meta.env.VITE_TESTCOIN_LOCK_ADDRESS ?? '',
+    tokenAddress: import.meta.env.VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS ?? DEFAULT_BASE_SEPOLIA_TESTCOIN_ADDRESS,
+    lockAddress: import.meta.env.VITE_TESTCOIN_LOCK_ADDRESS ?? DEFAULT_TESTCOIN_LOCK_ADDRESS,
     rpcUrl: import.meta.env.VITE_BASE_SEPOLIA_RPC_URL ?? 'https://sepolia.base.org',
     maturedPageSize: BigInt(import.meta.env.VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE ?? '500'),
   }
