@@ -1,46 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 import {
-  type LockPosition,
   approveToken,
-  chainLabel,
   connectWallet,
   ensureBaseSepolia,
   explorerTxUrl,
-  formatDate,
   formatUnits,
   getConnectedAccount,
   getLockConfig,
   isAddress,
   lockToken,
   parseUnits,
-  readActivePositionCount,
   readAllowance,
   readLockedAmount,
-  readMaturedAmount,
-  readMaturedLockedTotal,
-  readPositions,
   readTokenBalance,
   readTokenDetails,
-  readTotalLocked,
   shortAddress,
-  withdrawAllMatured,
-  withdrawPosition,
 } from './evm'
 
-type Dashboard = {
-  activePositionCount: bigint
+type WalletState = {
   allowance: bigint
-  accountLocked: bigint
-  accountMatured: bigint
   balance: bigint
   decimals: number
-  globalMatured: bigint
-  globalMaturedPartial: boolean
-  lookupLocked: bigint
-  lookupMatured: bigint
-  positions: LockPosition[]
+  locked: bigint
   symbol: string
-  totalLocked: bigint
 }
 
 const config = getLockConfig()
@@ -48,84 +30,62 @@ const config = getLockConfig()
 export function App() {
   const provider = typeof window !== 'undefined' ? window.ethereum : undefined
   const [account, setAccount] = useState('')
-  const [lookupAddress, setLookupAddress] = useState('')
   const [lockAmount, setLockAmount] = useState('')
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null)
-  const [status, setStatus] = useState('Connect an EVM wallet to Base Sepolia.')
+  const [walletState, setWalletState] = useState<WalletState | null>(null)
+  const [status, setStatus] = useState('Connect an EVM wallet.')
   const [txHash, setTxHash] = useState('')
   const [busy, setBusy] = useState(false)
 
   const configured = isAddress(config.tokenAddress) && isAddress(config.lockAddress)
-  const activeLookupAddress = useMemo(
-    () => (isAddress(lookupAddress) ? lookupAddress : account),
-    [account, lookupAddress],
-  )
   const parsedLockAmount = useMemo(() => {
-    if (!dashboard || !lockAmount.trim()) return 0n
+    if (!walletState || !lockAmount.trim()) return 0n
     try {
-      return parseUnits(lockAmount, dashboard.decimals)
+      return parseUnits(lockAmount, walletState.decimals)
     } catch {
       return 0n
     }
-  }, [dashboard, lockAmount])
+  }, [lockAmount, walletState])
+  const needsApproval = parsedLockAmount > 0n && walletState ? walletState.allowance < parsedLockAmount : false
 
-  const refresh = useCallback(async () => {
-    if (!provider) {
-      setStatus('No injected EVM wallet detected.')
-      return
-    }
+  const refresh = useCallback(
+    async (accountOverride?: string) => {
+      if (!provider) {
+        setStatus('No injected EVM wallet detected.')
+        return
+      }
 
-    if (!configured) {
-      setStatus('Set VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS and VITE_TESTCOIN_LOCK_ADDRESS.')
-      return
-    }
+      if (!configured) {
+        setStatus('Set VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS and VITE_TESTCOIN_LOCK_ADDRESS.')
+        return
+      }
 
-    const connected = account || (await getConnectedAccount(provider)) || ''
-    if (connected && !account) setAccount(connected)
+      const connected = accountOverride || account || (await getConnectedAccount(provider)) || ''
+      if (!connected) {
+        setStatus('Connect an EVM wallet.')
+        setWalletState(null)
+        return
+      }
 
-    const lookup = isAddress(activeLookupAddress) ? activeLookupAddress : ''
-    const details = await readTokenDetails(provider, config.tokenAddress)
-    const [totalLocked, globalMatured, activePositionCount] = await Promise.all([
-      readTotalLocked(provider, config.lockAddress),
-      readMaturedLockedTotal(provider, config.lockAddress, config.maturedPageSize),
-      readActivePositionCount(provider, config.lockAddress),
-    ])
+      if (connected !== account) setAccount(connected)
 
-    const [lookupLocked, lookupMatured] = lookup
-      ? await Promise.all([
-          readLockedAmount(provider, config.lockAddress, lookup),
-          readMaturedAmount(provider, config.lockAddress, lookup),
-        ])
-      : [0n, 0n]
+      const details = await readTokenDetails(provider, config.tokenAddress)
+      const [balance, allowance, locked] = await Promise.all([
+        readTokenBalance(provider, config.tokenAddress, connected),
+        readAllowance(provider, config.tokenAddress, connected, config.lockAddress),
+        readLockedAmount(provider, config.lockAddress, connected),
+      ])
 
-    const [balance, allowance, accountLocked, accountMatured, positions] =
-      connected
-        ? await Promise.all([
-            readTokenBalance(provider, config.tokenAddress, connected),
-            readAllowance(provider, config.tokenAddress, connected, config.lockAddress),
-            readLockedAmount(provider, config.lockAddress, connected),
-            readMaturedAmount(provider, config.lockAddress, connected),
-            readPositions(provider, config.lockAddress, connected),
-          ])
-        : [0n, 0n, 0n, 0n, []]
-
-    setDashboard({
-      accountLocked,
-      accountMatured,
-      activePositionCount,
-      allowance,
-      balance,
-      decimals: details.decimals,
-      globalMatured: globalMatured.amount,
-      globalMaturedPartial: globalMatured.partial,
-      lookupLocked,
-      lookupMatured,
-      positions,
-      symbol: details.symbol,
-      totalLocked,
-    })
-    setStatus(connected ? `Connected to ${chainLabel()} as ${shortAddress(connected)}.` : 'Wallet ready.')
-  }, [account, activeLookupAddress, configured, provider])
+      setWalletState({
+        allowance,
+        balance,
+        decimals: details.decimals,
+        locked,
+        symbol: details.symbol,
+      })
+      setStatus(`Connected as ${shortAddress(connected)}.`)
+    },
+    [account, configured, provider],
+  )
 
   useEffect(() => {
     refresh().catch((error: unknown) => setStatus(errorMessage(error)))
@@ -135,8 +95,10 @@ export function App() {
     if (!provider?.on || !provider.removeListener) return undefined
 
     const handleAccounts = (accounts: unknown) => {
-      setAccount(Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : '')
+      const nextAccount = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
+      setAccount(nextAccount)
       setTxHash('')
+      refresh(nextAccount).catch((error: unknown) => setStatus(errorMessage(error)))
     }
     const handleChain = () => {
       refresh().catch((error: unknown) => setStatus(errorMessage(error)))
@@ -151,18 +113,37 @@ export function App() {
     }
   }, [provider, refresh])
 
-  async function run(label: string, action: () => Promise<string | void>) {
-    if (!provider || !account) return
+  async function connect() {
+    if (!provider) return
 
     setBusy(true)
-    setStatus(label)
+    setStatus('Connecting wallet...')
+    setTxHash('')
+
+    try {
+      const connected = await connectWallet(provider)
+      await refresh(connected)
+    } catch (error) {
+      setStatus(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitLockAction() {
+    if (!provider || !account || parsedLockAmount <= 0n) return
+
+    setBusy(true)
+    setStatus(needsApproval ? 'Submitting approval...' : 'Submitting lock...')
     setTxHash('')
 
     try {
       await ensureBaseSepolia(provider, config.rpcUrl)
-      const hash = await action()
-      if (hash) setTxHash(hash)
-      setStatus(hash ? 'Transaction submitted.' : 'Updated.')
+      const hash = needsApproval
+        ? await approveToken(provider, config.tokenAddress, account, config.lockAddress, parsedLockAmount)
+        : await lockToken(provider, config.lockAddress, account, parsedLockAmount)
+      setTxHash(hash)
+      setStatus(needsApproval ? 'Approval submitted.' : 'Lock submitted.')
       await refresh()
     } catch (error) {
       setStatus(errorMessage(error))
@@ -171,211 +152,81 @@ export function App() {
     }
   }
 
-  const needsApproval = parsedLockAmount > 0n && dashboard ? dashboard.allowance < parsedLockAmount : false
-  const maturePositions = dashboard?.positions.filter((position) => !position.withdrawn && position.unlockAt <= nowSeconds()) ?? []
-
   return (
-    <section class="bg-[#f8f7f2] text-neutral-950">
-      <section class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 md:px-6">
-        <header class="flex flex-col gap-4 border-b border-neutral-300 pb-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 class="text-3xl font-semibold md:text-4xl">$testcoin one-year lock</h1>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-              Base Sepolia contract: lock now, withdraw after the 365 day cliff.
-            </p>
+    <section class="min-w-0 w-[calc(100vw-2rem)] rounded-lg border border-neutral-300 bg-white p-4 shadow-sm md:w-auto">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-xl font-semibold">Lock $testcoin</h1>
+        <button
+          class="h-10 rounded-md bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
+          disabled={!provider || busy}
+          onClick={connect}
+          type="button"
+        >
+          {account ? shortAddress(account) : 'Connect wallet'}
+        </button>
+      </div>
+
+      <div class="mt-4 grid min-w-0 gap-3">
+        <dl class="grid min-w-0 gap-3 sm:grid-cols-2">
+          <Metric label="Available" value={amountLabel(walletState?.balance, walletState)} />
+          <Metric label="Currently locked" value={amountLabel(walletState?.locked, walletState)} />
+        </dl>
+
+        <label class="grid min-w-0 gap-2 text-sm font-medium">
+          Amount
+          <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              class="h-11 min-w-0 max-w-full rounded-md border border-neutral-300 px-3 text-base outline-none focus:border-neutral-950"
+              inputMode="decimal"
+              onInput={(event) => setLockAmount(event.currentTarget.value)}
+              placeholder="0.0"
+              value={lockAmount}
+            />
+            <button
+              class="h-11 rounded-md border border-neutral-300 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!walletState || walletState.balance <= 0n || busy}
+              onClick={() => walletState && setLockAmount(formatUnits(walletState.balance, walletState.decimals))}
+              type="button"
+            >
+              Max
+            </button>
           </div>
-          <button
-            class="h-11 rounded-md bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!provider || busy}
-            onClick={() =>
-              provider &&
-              connectWallet(provider)
-                .then(setAccount)
-                .then(() => refresh())
-                .catch((error: unknown) => setStatus(errorMessage(error)))
-            }
-            type="button"
-          >
-            {account ? shortAddress(account) : 'Connect wallet'}
-          </button>
-        </header>
+        </label>
 
-        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section class="grid gap-4">
-            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Metric label="Global locked" value={amountLabel(dashboard?.totalLocked, dashboard)} />
-              <Metric
-                label="Global matured"
-                value={`${amountLabel(dashboard?.globalMatured, dashboard)}${dashboard?.globalMaturedPartial ? '+' : ''}`}
-              />
-              <Metric label="Active positions" value={dashboard?.activePositionCount.toString() ?? '-'} />
-              <Metric label="Wallet balance" value={amountLabel(dashboard?.balance, dashboard)} />
-            </div>
+        <button
+          class="h-11 min-w-0 max-w-full rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
+          disabled={!account || !configured || parsedLockAmount <= 0n || busy}
+          onClick={submitLockAction}
+          type="button"
+        >
+          {busy ? 'Working' : needsApproval ? 'Approve' : 'Lock'}
+        </button>
 
-            <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <section class="rounded-lg border border-neutral-300 bg-white p-4">
-                <div class="flex flex-col gap-2 border-b border-neutral-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 class="text-lg font-semibold">Lock {dashboard?.symbol ?? '$testcoin'}</h2>
-                    <p class="text-sm text-neutral-600">Token {shortOrUnset(config.tokenAddress)}</p>
-                  </div>
-                  <span class="text-sm font-medium text-neutral-600">Lock contract {shortOrUnset(config.lockAddress)}</span>
-                </div>
-
-                <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-                  <input
-                    class="h-11 rounded-md border border-neutral-300 px-3 text-base outline-none focus:border-neutral-950"
-                    inputMode="decimal"
-                    onInput={(event) => setLockAmount(event.currentTarget.value)}
-                    placeholder="0.0"
-                    value={lockAmount}
-                  />
-                  <button
-                    class="h-11 rounded-md border border-neutral-300 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!dashboard || dashboard.balance <= 0n || busy}
-                    onClick={() => dashboard && setLockAmount(formatUnits(dashboard.balance, dashboard.decimals))}
-                    type="button"
-                  >
-                    Max
-                  </button>
-                  <button
-                    class="h-11 rounded-md border border-neutral-950 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!account || !configured || !needsApproval || busy}
-                    onClick={() =>
-                      run('Submitting approval...', () =>
-                        approveToken(provider!, config.tokenAddress, account, config.lockAddress, parsedLockAmount),
-                      )
-                    }
-                    type="button"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    class="h-11 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!account || !configured || parsedLockAmount <= 0n || needsApproval || busy}
-                    onClick={() =>
-                      run('Submitting lock...', () => lockToken(provider!, config.lockAddress, account, parsedLockAmount))
-                    }
-                    type="button"
-                  >
-                    Lock
-                  </button>
-                </div>
-
-                <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                  <Metric compact label="Allowance" value={amountLabel(dashboard?.allowance, dashboard)} />
-                  <Metric compact label="Your locked" value={amountLabel(account ? dashboard?.accountLocked : undefined, dashboard)} />
-                  <Metric compact label="Your matured" value={amountLabel(account ? dashboard?.accountMatured : undefined, dashboard)} />
-                </div>
-              </section>
-
-              <section class="rounded-lg border border-neutral-300 bg-white p-4">
-                <h2 class="text-lg font-semibold">Address lookup</h2>
-                <div class="mt-4 flex gap-2">
-                  <input
-                    class="h-11 min-w-0 flex-1 rounded-md border border-neutral-300 px-3 text-sm outline-none focus:border-neutral-950"
-                    onInput={(event) => setLookupAddress(event.currentTarget.value)}
-                    placeholder="0x..."
-                    value={lookupAddress}
-                  />
-                  <button
-                    class="h-11 rounded-md border border-neutral-950 px-4 text-sm font-semibold"
-                    onClick={() => refresh().catch((error: unknown) => setStatus(errorMessage(error)))}
-                    type="button"
-                  >
-                    Check
-                  </button>
-                </div>
-                <div class="mt-4 grid gap-3">
-                  <Metric compact label="Locked" value={amountLabel(dashboard?.lookupLocked, dashboard)} />
-                  <Metric compact label="Matured still locked" value={amountLabel(dashboard?.lookupMatured, dashboard)} />
-                </div>
-              </section>
-            </div>
-
-            <section class="rounded-lg border border-neutral-300 bg-white">
-              <div class="flex flex-col gap-3 border-b border-neutral-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <h2 class="text-lg font-semibold">Your positions</h2>
-                <button
-                  class="h-10 rounded-md border border-neutral-950 px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!account || maturePositions.length === 0 || busy}
-                  onClick={() => run('Withdrawing matured positions...', () => withdrawAllMatured(provider!, config.lockAddress, account))}
-                  type="button"
-                >
-                  Withdraw all matured
-                </button>
-              </div>
-
-              <div class="divide-y divide-neutral-200">
-                {dashboard?.positions.length ? (
-                  dashboard.positions.map((position) => (
-                    <article class="grid gap-3 p-4 md:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center" key={position.id.toString()}>
-                      <div class="text-sm font-semibold">#{position.id.toString()}</div>
-                      <div>
-                        <p class="text-sm font-medium">{formatUnits(position.amount, dashboard.decimals)} {dashboard.symbol}</p>
-                        <p class="text-xs text-neutral-600">Locked {formatDate(position.lockedAt)}</p>
-                      </div>
-                      <div>
-                        <p class="text-sm font-medium">{position.withdrawn ? 'Withdrawn' : position.unlockAt <= nowSeconds() ? 'Matured' : 'Locked'}</p>
-                        <p class="text-xs text-neutral-600">Unlocks {formatDate(position.unlockAt)}</p>
-                      </div>
-                      <button
-                        class="h-10 rounded-md bg-neutral-950 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={position.withdrawn || position.unlockAt > nowSeconds() || busy}
-                        onClick={() => run('Withdrawing position...', () => withdrawPosition(provider!, config.lockAddress, account, position.id))}
-                        type="button"
-                      >
-                        Withdraw
-                      </button>
-                    </article>
-                  ))
-                ) : (
-                  <p class="p-4 text-sm text-neutral-600">No connected-wallet positions loaded.</p>
-                )}
-              </div>
-            </section>
-          </section>
-
-          <aside class="rounded-lg border border-neutral-950 bg-neutral-950 p-4 text-white">
-            <h2 class="text-lg font-semibold">Status</h2>
-            <p class="mt-3 text-sm leading-6 text-neutral-300">{status}</p>
-            {txHash && (
-              <a class="mt-4 inline-flex text-sm font-semibold text-emerald-300" href={explorerTxUrl(txHash)} rel="noreferrer" target="_blank">
-                View transaction
-              </a>
-            )}
-            <div class="mt-6 space-y-3 text-sm text-neutral-300">
-              <p>Network: {chainLabel()}</p>
-              <p>Token: {shortOrUnset(config.tokenAddress)}</p>
-              <p>Lock: {shortOrUnset(config.lockAddress)}</p>
-            </div>
-          </aside>
+        <div class="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+          {status}
+          {txHash && (
+            <a class="ml-2 font-semibold text-emerald-700" href={explorerTxUrl(txHash)} rel="noreferrer" target="_blank">
+              View transaction
+            </a>
+          )}
         </div>
-      </section>
+      </div>
     </section>
   )
 }
 
-function Metric({ compact = false, label, value }: { compact?: boolean; label: string; value: string }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div class={`${compact ? 'rounded-md p-3' : 'rounded-lg p-4'} border border-neutral-300 bg-white`}>
-      <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
-      <p class={`${compact ? 'text-lg' : 'text-2xl'} mt-1 break-words font-semibold text-neutral-950`}>{value}</p>
+    <div>
+      <dt class="text-xs font-semibold uppercase text-neutral-500">{label}</dt>
+      <dd class="mt-1 break-all font-mono text-sm text-neutral-950">{value}</dd>
     </div>
   )
 }
 
-function amountLabel(value: bigint | undefined, dashboard: Dashboard | null): string {
-  if (value === undefined || !dashboard) return '-'
-  return `${formatUnits(value, dashboard.decimals)} ${dashboard.symbol}`
-}
-
-function shortOrUnset(value: string): string {
-  return isAddress(value) ? shortAddress(value) : 'not set'
-}
-
-function nowSeconds(): bigint {
-  return BigInt(Math.floor(Date.now() / 1000))
+function amountLabel(value: bigint | undefined, walletState: WalletState | null): string {
+  if (value === undefined || !walletState) return '-'
+  return `${formatUnits(value, walletState.decimals)} ${walletState.symbol}`
 }
 
 function errorMessage(error: unknown): string {
