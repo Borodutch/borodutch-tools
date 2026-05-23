@@ -40,8 +40,7 @@ export function App() {
       <header class="border-b border-neutral-300 bg-white">
         <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6 lg:px-8">
           <div>
-            <p class="text-sm font-semibold text-emerald-700">tools.borodutch.com</p>
-            <h1 class="mt-1 text-2xl font-semibold">Borodutch Tools</h1>
+            <h1 class="text-2xl font-semibold">Borodutch Tools</h1>
             <p class="mt-1 text-sm text-neutral-600">{activeDescription}</p>
           </div>
           <nav aria-label="Tools" class="inline-flex rounded-md border border-neutral-300 bg-neutral-100 p-1">

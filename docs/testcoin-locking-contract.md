@@ -1,7 +1,8 @@
 # Base Sepolia $testcoin locking contract
 
-`contracts/src/TestcoinOneYearLock.sol` locks an existing Base Sepolia ERC20
-for a fixed 365 day cliff.
+`contracts/src/BaseSepoliaTestcoin.sol` is a fixed-supply Base Sepolia ERC20,
+and `contracts/src/TestcoinOneYearLock.sol` locks that token for a fixed 365 day
+cliff.
 
 ## Contract model
 
@@ -38,12 +39,24 @@ Deployment:
 
 - `BASE_SEPOLIA_RPC_URL` or equivalent Foundry RPC alias
 - `BASE_SEPOLIA_TESTCOIN_ADDRESS`
+- `TESTCOIN_INITIAL_SUPPLY_RAW` when deploying the token and lock together
 - deployment private key supplied to Foundry through a secret manager or shell
   environment
 
 Do not put private keys in source, frontend env, deployment metadata, or logs.
 
 ## Deploy
+
+Token plus lock:
+
+```sh
+forge script contracts/script/DeployTestcoinAndLock.s.sol \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --private-key "$BASE_SEPOLIA_DEPLOYER_PRIVATE_KEY" \
+  --broadcast
+```
+
+Lock only, when the token already exists:
 
 ```sh
 forge script contracts/script/DeployTestcoinOneYearLock.s.sol \
@@ -61,6 +74,16 @@ Store this metadata after deployment:
 - deployment transaction hash
 - chain id `84532`
 - block number
+
+## Base Sepolia deployment 2026-05-23
+
+- token: `0xc2f48ed979e106e2feeb5acd0fe721daf5f33adf`
+- lock contract: `0x0f053b5b292292e3433ee7d24131afdc1729ec4b`
+- deployer: `0xC2142A4918754abe5975ecD486A66DfeBA39A419`
+- token supply: `1000000000000000000000000000`
+- token deployment tx: `0xfd065f9f2623e50440242b8e6e3503c4a1fd07a8080825d6527ae445df56669e`
+- lock deployment tx: `0x74b38962126c3d9463c351c961e6e8d62bb1098a8ed5a18d1543ea08d32f51ef`
+- chain id: `84532`
 
 ## Validation
 

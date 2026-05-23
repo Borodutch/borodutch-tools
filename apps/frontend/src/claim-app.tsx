@@ -36,6 +36,12 @@ type ChallengeResponse = {
   expiresAt: string
 }
 
+type AllocationMessageResponse = {
+  solanaAddress: string
+  message: string
+  messageDigest: string
+}
+
 type ClaimRecord = {
   id: string
   solanaAddress: string
@@ -56,7 +62,6 @@ export function App() {
   const [walletAddress, setWalletAddress] = useState('')
   const [recipient, setRecipient] = useState('')
   const [allocation, setAllocation] = useState<AllocationResponse | null>(null)
-  const [challenge, setChallenge] = useState<ChallengeResponse | null>(null)
   const [claim, setClaim] = useState<ClaimRecord | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -81,24 +86,49 @@ export function App() {
       .catch((apiError: Error) => setError(apiError.message))
   }, [])
 
-  async function connectWallet() {
+  async function getSolanaPublicKey() {
+    if (!provider) {
+      throw new Error('No Solana wallet found in this browser.')
+    }
+
+    const connection = await provider.connect()
+    const publicKey = connection.publicKey?.toBase58() ?? provider.publicKey?.toBase58()
+
+    if (!publicKey) {
+      throw new Error('Wallet did not return a Solana public key.')
+    }
+
+    setWalletAddress(publicKey)
+    return publicKey
+  }
+
+  async function signMessage(message: string) {
+    if (!provider) {
+      throw new Error('No Solana wallet found in this browser.')
+    }
+
+    const signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8')
+    const signature = signed instanceof Uint8Array ? signed : signed.signature
+    return bs58.encode(signature)
+  }
+
+  async function checkAllocation() {
     setError('')
-    setBusy('wallet')
+    setBusy('allocation')
 
     try {
-      if (!provider) {
-        throw new Error('No Solana wallet found in this browser.')
-      }
-
-      const connection = await provider.connect()
-      const publicKey = connection.publicKey?.toBase58() ?? provider.publicKey?.toBase58()
-
-      if (!publicKey) {
-        throw new Error('Wallet did not return a Solana public key.')
-      }
-
-      setWalletAddress(publicKey)
-      await refreshAllocation(publicKey)
+      const publicKey = await getSolanaPublicKey()
+      const proof = await api<AllocationMessageResponse>('/api/claim/allocation-message', {
+        method: 'POST',
+        body: JSON.stringify({ solanaAddress: publicKey }),
+      })
+      const signatureBase58 = await signMessage(proof.message)
+      const nextAllocation = await api<AllocationResponse>('/api/claim/allocation-check', {
+        method: 'POST',
+        body: JSON.stringify({ solanaAddress: publicKey, signatureBase58 }),
+      })
+      setAllocation(nextAllocation)
+      setClaim(nextAllocation.existingClaim ?? null)
     } catch (connectError) {
       setError(messageForError(connectError))
     } finally {
@@ -106,69 +136,30 @@ export function App() {
     }
   }
 
-  async function refreshAllocation(solanaAddress = walletAddress) {
-    if (!solanaAddress) return
-
+  async function claimToRecipient() {
     setError('')
-    setBusy('allocation')
-
-    try {
-      const nextAllocation = await api<AllocationResponse>(
-        `/api/claim/allocation?solanaAddress=${encodeURIComponent(solanaAddress)}`,
-      )
-      setAllocation(nextAllocation)
-      setClaim(nextAllocation.existingClaim ?? null)
-    } catch (allocationError) {
-      setError(messageForError(allocationError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function createChallenge() {
-    setError('')
-    setChallenge(null)
     setClaim(null)
     setBusy('challenge')
 
     try {
+      const publicKey = walletAddress || (await getSolanaPublicKey())
       const nextChallenge = await api<ChallengeResponse>('/api/claim/challenges', {
         method: 'POST',
-        body: JSON.stringify({ solanaAddress: walletAddress, evmRecipient: recipient }),
+        body: JSON.stringify({ solanaAddress: publicKey, evmRecipient: recipient }),
       })
-      setChallenge(nextChallenge)
-    } catch (challengeError) {
-      setError(messageForError(challengeError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function signAndSubmit() {
-    setError('')
-    setBusy('sign')
-
-    try {
-      if (!provider || !challenge) {
-        throw new Error('Connect a Solana wallet and create a claim message first.')
-      }
-
-      const signed = await provider.signMessage(new TextEncoder().encode(challenge.message), 'utf8')
-      const signature = signed instanceof Uint8Array ? signed : signed.signature
       const result = await api<SubmitResponse>('/api/claim/submit', {
         method: 'POST',
         body: JSON.stringify({
-          challengeId: challenge.challengeId,
-          solanaAddress: walletAddress,
+          challengeId: nextChallenge.challengeId,
+          solanaAddress: publicKey,
           evmRecipient: recipient,
-          signatureBase58: bs58.encode(signature),
+          signatureBase58: await signMessage(nextChallenge.message),
         }),
       })
 
       setClaim(result.claim)
-      setChallenge(null)
-    } catch (submitError) {
-      setError(messageForError(submitError))
+    } catch (challengeError) {
+      setError(messageForError(challengeError))
     } finally {
       setBusy('')
     }
@@ -180,7 +171,6 @@ export function App() {
         <aside class="border-b border-neutral-300 pb-5 md:border-b-0 md:border-r md:pb-0 md:pr-6">
           <div class="flex items-center justify-between gap-3 md:block">
             <div>
-              <p class="text-sm font-semibold text-emerald-700">tools.borodutch.com</p>
               <h1 class="mt-2 text-3xl font-semibold leading-tight">$bdtch claim</h1>
             </div>
             <StatusPill status={status} />
@@ -212,11 +202,11 @@ export function App() {
                 </div>
                 <button
                   class="rounded-md bg-neutral-950 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
-                  disabled={busy === 'wallet'}
-                  onClick={connectWallet}
+                  disabled={busy === 'allocation'}
+                  onClick={checkAllocation}
                   type="button"
                 >
-                  {walletAddress ? shorten(walletAddress) : busy === 'wallet' ? 'Connecting' : 'Connect Solana'}
+                  {busy === 'allocation' ? 'Checking' : walletAddress ? 'Check allocation again' : 'Check allocation'}
                 </button>
               </div>
 
@@ -227,7 +217,6 @@ export function App() {
                     class="h-12 rounded-md border border-neutral-300 bg-white px-3 font-mono text-sm outline-none ring-emerald-600 transition focus:ring-2"
                     onInput={(event) => {
                       setRecipient(event.currentTarget.value)
-                      setChallenge(null)
                     }}
                     placeholder="0x..."
                     value={recipient}
@@ -238,18 +227,10 @@ export function App() {
                   <button
                     class="rounded-md bg-emerald-700 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
                     disabled={!canClaim || busy === 'challenge'}
-                    onClick={createChallenge}
+                    onClick={claimToRecipient}
                     type="button"
                   >
-                    {busy === 'challenge' ? 'Preparing message' : 'Prepare claim'}
-                  </button>
-                  <button
-                    class="rounded-md border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 disabled:cursor-not-allowed disabled:text-neutral-400"
-                    disabled={!walletAddress || busy === 'allocation'}
-                    onClick={() => refreshAllocation()}
-                    type="button"
-                  >
-                    Refresh eligibility
+                    {busy === 'challenge' ? 'Signing claim' : 'Claim to address'}
                   </button>
                 </div>
               </div>
@@ -257,30 +238,6 @@ export function App() {
 
             <AllocationPanel allocation={allocation} claim={claim} />
           </section>
-
-          {challenge && (
-            <section class="rounded-lg border border-neutral-300 bg-white p-5 shadow-sm">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 class="text-lg font-semibold">Solana message</h2>
-                  <p class="mt-1 text-sm text-neutral-600">Digest {shorten(challenge.messageDigest, 10, 10)}</p>
-                </div>
-                <button
-                  class="rounded-md bg-neutral-950 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
-                  disabled={busy === 'sign'}
-                  onClick={signAndSubmit}
-                  type="button"
-                >
-                  {busy === 'sign' ? 'Signing' : 'Sign and submit'}
-                </button>
-              </div>
-              <textarea
-                class="mt-4 min-h-80 w-full resize-y rounded-md border border-neutral-300 bg-neutral-50 p-3 font-mono text-xs leading-5 text-neutral-800"
-                readOnly
-                value={challenge.message}
-              />
-            </section>
-          )}
 
           {claim && <ClaimPanel claim={claim} />}
           {error && <div class="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-900">{error}</div>}

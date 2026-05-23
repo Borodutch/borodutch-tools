@@ -28,6 +28,23 @@ export function buildClaimMessage(input: {
   ].join('\n')
 }
 
+export function buildAllocationCheckMessage(input: {
+  snapshot: SnapshotMetadata
+  solanaAddress: string
+}) {
+  return [
+    `${DOMAIN}`,
+    '',
+    'Purpose: Check Base Sepolia $testcoin allocation',
+    `Solana wallet: ${input.solanaAddress}`,
+    `$bdtch mint: ${input.snapshot.mint}`,
+    `Snapshot id: ${input.snapshot.id}`,
+    `Helius indexed slot: ${input.snapshot.heliusLastIndexedSlot}`,
+    '',
+    'Signing this message proves wallet ownership for an allocation lookup. It does not claim tokens, approve transfers, or grant custody of your Solana assets.',
+  ].join('\n')
+}
+
 export function digestMessage(message: string) {
   return createHash('sha256').update(message, 'utf8').digest('hex')
 }

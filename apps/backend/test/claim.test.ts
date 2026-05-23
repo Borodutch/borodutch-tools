@@ -3,7 +3,7 @@ import bs58 from 'bs58'
 import nacl from 'tweetnacl'
 import { describe, expect, it, vi } from 'vitest'
 import { calculateClaimAmountRaw } from '../src/claim/math.ts'
-import { buildClaimMessage } from '../src/claim/message.ts'
+import { buildAllocationCheckMessage, buildClaimMessage } from '../src/claim/message.ts'
 import { MemoryClaimStore } from '../src/claim/memoryStore.ts'
 import { verifySolanaSignature } from '../src/claim/signature.ts'
 import { ClaimService } from '../src/claim/service.ts'
@@ -72,6 +72,32 @@ describe('validation and signature binding', () => {
         signatureBase58: signature,
       }),
     ).toBe(false)
+  })
+
+  it('verifies allocation-check signatures before returning allocation data', async () => {
+    const store = new MemoryClaimStore()
+    const service = new ClaimService(store, mockSender('0xabc'), 1000000n)
+    const wallet = Keypair.generate()
+    const holderAddress = wallet.publicKey.toBase58()
+
+    seedHolder(store, holderAddress)
+    const message = buildAllocationCheckMessage({
+      snapshot: snapshotMetadata,
+      solanaAddress: holderAddress,
+    })
+    const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), wallet.secretKey))
+    const allocation = await service.checkAllocation({
+      solanaAddress: holderAddress,
+      signatureBase58: signature,
+    })
+
+    expect(allocation.eligible).toBe(true)
+    await expect(
+      service.checkAllocation({
+        solanaAddress: holderAddress,
+        signatureBase58: bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), Keypair.generate().secretKey)),
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_signature' })
   })
 })
 

@@ -103,6 +103,17 @@ async function handleClaimApi(request: Request, url: URL) {
     return json(await service.getAllocation(solanaAddress))
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/claim/allocation-message') {
+    const body = (await request.json()) as { solanaAddress: unknown }
+    return json(service.getAllocationCheckMessage(body.solanaAddress), 201)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/claim/allocation-check') {
+    ensureRuntimeReady()
+    const body = (await request.json()) as { solanaAddress: unknown; signatureBase58: unknown }
+    return json(await service.checkAllocation(body))
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/claim/challenges') {
     ensureRuntimeReady()
     const body = (await request.json()) as { solanaAddress: unknown; evmRecipient: unknown }

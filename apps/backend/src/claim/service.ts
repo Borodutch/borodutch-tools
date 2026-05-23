@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { calculateClaimAmountRaw, parsePositiveRawAmount } from './math.ts'
-import { buildClaimMessage, digestMessage } from './message.ts'
+import { buildAllocationCheckMessage, buildClaimMessage, digestMessage } from './message.ts'
 import { verifySolanaSignature } from './signature.ts'
 import {
   BASE_SEPOLIA_CHAIN_ID,
@@ -57,6 +57,40 @@ export class ClaimService {
       snapshot: this.store.getSnapshot(),
       existingClaim: serializeClaim(existingClaim),
     }
+  }
+
+  getAllocationCheckMessage(solanaAddressInput: unknown) {
+    const solanaAddress = normalizeSolanaAddress(solanaAddressInput)
+    const message = buildAllocationCheckMessage({
+      snapshot: this.store.getSnapshot(),
+      solanaAddress,
+    })
+
+    return {
+      solanaAddress,
+      message,
+      messageDigest: digestMessage(message),
+    }
+  }
+
+  async checkAllocation(input: { solanaAddress: unknown; signatureBase58: unknown }) {
+    if (typeof input.signatureBase58 !== 'string' || input.signatureBase58.length < 32) {
+      throw new ClaimError('invalid_signature', 'Signature is required.')
+    }
+
+    const { solanaAddress, message } = this.getAllocationCheckMessage(input.solanaAddress)
+
+    if (
+      !verifySolanaSignature({
+        solanaAddress,
+        message,
+        signatureBase58: input.signatureBase58,
+      })
+    ) {
+      throw new ClaimError('invalid_signature', 'Solana signature does not verify for this allocation check.')
+    }
+
+    return this.getAllocation(solanaAddress)
   }
 
   async createChallenge(input: { solanaAddress: unknown; evmRecipient: unknown }) {

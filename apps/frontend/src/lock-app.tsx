@@ -179,8 +179,7 @@ export function App() {
       <section class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 md:px-6">
         <header class="flex flex-col gap-4 border-b border-neutral-300 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-emerald-700">tools.borodutch.com</p>
-            <h1 class="mt-1 text-3xl font-semibold md:text-4xl">$testcoin one-year lock</h1>
+            <h1 class="text-3xl font-semibold md:text-4xl">$testcoin one-year lock</h1>
             <p class="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
               Base Sepolia contract: lock now, withdraw after the 365 day cliff.
             </p>
@@ -223,7 +222,7 @@ export function App() {
                   <span class="text-sm font-medium text-neutral-600">Lock contract {shortOrUnset(config.lockAddress)}</span>
                 </div>
 
-                <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
                   <input
                     class="h-11 rounded-md border border-neutral-300 px-3 text-base outline-none focus:border-neutral-950"
                     inputMode="decimal"
@@ -231,6 +230,14 @@ export function App() {
                     placeholder="0.0"
                     value={lockAmount}
                   />
+                  <button
+                    class="h-11 rounded-md border border-neutral-300 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!dashboard || dashboard.balance <= 0n || busy}
+                    onClick={() => dashboard && setLockAmount(formatUnits(dashboard.balance, dashboard.decimals))}
+                    type="button"
+                  >
+                    Max
+                  </button>
                   <button
                     class="h-11 rounded-md border border-neutral-950 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!account || !configured || !needsApproval || busy}
