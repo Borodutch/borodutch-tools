@@ -6,6 +6,7 @@ const viemMocks = vi.hoisted(() => {
   let txCounter = 0
   const simulateContract = vi.fn(async () => ({ result: true, request: { functionName: 'transfer' } }))
   const waitForTransactionReceipt = vi.fn(async () => ({ status: 'success' }))
+  const getChainId = vi.fn(async () => 8453)
   const getTransactionReceipt = vi.fn()
   const getTransaction = vi.fn()
   const readContract = vi.fn(async () => 0n)
@@ -21,8 +22,9 @@ const viemMocks = vi.hoisted(() => {
   })
 
   return {
+    getChainId,
     createPublicClient: vi.fn(() => ({
-      getChainId: vi.fn(async () => 84532),
+      getChainId,
       simulateContract,
       waitForTransactionReceipt,
       getTransactionReceipt,
@@ -40,6 +42,8 @@ const viemMocks = vi.hoisted(() => {
       maxActiveWrites = 0
       txCounter = 0
       simulateContract.mockClear()
+      getChainId.mockClear()
+      getChainId.mockResolvedValue(8453)
       waitForTransactionReceipt.mockClear()
       waitForTransactionReceipt.mockResolvedValue({ status: 'success' })
       getTransactionReceipt.mockClear()
@@ -73,12 +77,13 @@ vi.mock('viem/accounts', () => ({
 }))
 
 vi.mock('viem/chains', () => ({
+  base: { id: 8453, name: 'Base' },
   baseSepolia: { id: 84532, name: 'Base Sepolia' },
 }))
 
-const { BaseSepoliaTokenSender } = await import('../src/claim/chainSender.ts')
+const { BaseMainnetBoroTokenSender } = await import('../src/claim/chainSender.ts')
 
-describe('Base Sepolia token sender', () => {
+describe('Base mainnet BORO token sender', () => {
   beforeEach(() => {
     viemMocks.reset()
   })
@@ -87,12 +92,12 @@ describe('Base Sepolia token sender', () => {
     const sender = createSender()
 
     await Promise.all([
-      sender.sendTestcoin({
+      sender.sendToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
       }),
-      sender.sendTestcoin({
+      sender.sendToken({
         recipient: '0x000000000000000000000000000000000000bEEF',
         amountRaw: 2n,
         idempotencyKey: 'claim-2',
@@ -107,12 +112,12 @@ describe('Base Sepolia token sender', () => {
     const sender = createSender()
 
     const [firstTxHash, secondTxHash] = await Promise.all([
-      sender.sendTestcoin({
+      sender.sendToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
       }),
-      sender.sendTestcoin({
+      sender.sendToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
@@ -126,14 +131,14 @@ describe('Base Sepolia token sender', () => {
   it('rejects reuse of an idempotencyKey for a different transfer', async () => {
     const sender = createSender()
 
-    await sender.sendTestcoin({
+    await sender.sendToken({
       recipient: '0x000000000000000000000000000000000000dEaD',
       amountRaw: 1n,
       idempotencyKey: 'claim-1',
     })
 
     await expect(
-      sender.sendTestcoin({
+      sender.sendToken({
         recipient: '0x000000000000000000000000000000000000bEEF',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
@@ -147,7 +152,7 @@ describe('Base Sepolia token sender', () => {
     viemMocks.waitForTransactionReceipt.mockRejectedValueOnce(new Error('receipt timeout'))
 
     await expect(
-      sender.sendTestcoin({
+      sender.sendToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
@@ -155,12 +160,25 @@ describe('Base Sepolia token sender', () => {
     ).rejects.toMatchObject({ txHash: '0x1' })
     expect(viemMocks.writeContract).toHaveBeenCalledTimes(1)
   })
+
+  it('rejects an RPC endpoint that is not Base mainnet', async () => {
+    const sender = createSender()
+    viemMocks.getChainId.mockResolvedValueOnce(84532)
+
+    await expect(
+      sender.sendToken({
+        recipient: '0x000000000000000000000000000000000000dEaD',
+        amountRaw: 1n,
+        idempotencyKey: 'claim-1',
+      }),
+    ).rejects.toThrow('Base mainnet RPC returned unexpected chain id')
+  })
 })
 
 function createSender() {
-  return new BaseSepoliaTokenSender({
-    BASE_SEPOLIA_RPC_URL: 'https://base-sepolia.example',
-    BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000c0Fe',
-    BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: '1'.repeat(64),
+  return new BaseMainnetBoroTokenSender({
+    BASE_MAINNET_RPC_URL: 'https://base-mainnet.example',
+    BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000c0Fe',
+    BORO_CLAIM_SENDER_PRIVATE_KEY: '1'.repeat(64),
   })
 }

@@ -3,9 +3,9 @@ import { calculateClaimAmountRaw, parsePositiveRawAmount } from './math.ts'
 import { buildAllocationCheckMessage, buildClaimMessage, digestMessage } from './message.ts'
 import { verifySolanaSignature } from './signature.ts'
 import {
-  BASE_SEPOLIA_CHAIN_ID,
+  BORO_MAINNET_CLAIM_CONFIG,
   DOMAIN,
-  PURPOSE,
+  type ClaimRuntimeConfig,
   type ClaimRecord,
   type ClaimStore,
   type TokenSender,
@@ -19,6 +19,7 @@ export class ClaimService {
     private readonly store: ClaimStore,
     private readonly sender: TokenSender,
     private readonly claimPoolRaw: bigint,
+    private readonly claimConfig: ClaimRuntimeConfig = BORO_MAINNET_CLAIM_CONFIG,
   ) {}
 
   getConfig(missingRuntimeEnv: string[]) {
@@ -26,9 +27,11 @@ export class ClaimService {
 
     return {
       app: DOMAIN,
-      purpose: PURPOSE,
-      enabled: true,
-      chainId: BASE_SEPOLIA_CHAIN_ID,
+      purpose: this.claimConfig.purpose,
+      enabled: missingRuntimeEnv.length === 0,
+      network: this.claimConfig.networkName,
+      tokenSymbol: this.claimConfig.tokenSymbol,
+      chainId: this.claimConfig.chainId,
       snapshot,
       claimPoolRaw: this.claimPoolRaw.toString(),
       missingRuntimeEnv,
@@ -65,6 +68,7 @@ export class ClaimService {
     const message = buildAllocationCheckMessage({
       snapshot: this.store.getSnapshot(),
       solanaAddress,
+      claimConfig: this.claimConfig,
     })
 
     return {
@@ -123,7 +127,7 @@ export class ClaimService {
     })
 
     if (claimAmountRaw <= 0n) {
-      throw new ClaimError('zero_allocation', 'This wallet has a zero $testcoin allocation.')
+      throw new ClaimError('zero_allocation', `This wallet has a zero ${this.claimConfig.tokenSymbol} allocation.`)
     }
 
     const nonce = randomBytes(18).toString('hex')
@@ -134,6 +138,7 @@ export class ClaimService {
       holderBdtchRaw: holder.amountRaw,
       claimAmountRaw: claimAmountRaw.toString(),
       nonce,
+      claimConfig: this.claimConfig,
     })
 
     const challenge = await this.store.createChallenge({
@@ -222,7 +227,7 @@ export class ClaimService {
     }
 
     try {
-      const txHash = await this.sender.sendTestcoin({
+      const txHash = await this.sender.sendToken({
         recipient: evmRecipient,
         amountRaw: BigInt(challenge.claimAmountRaw),
         idempotencyKey: pending.claim.id,
@@ -233,7 +238,7 @@ export class ClaimService {
       const claim = await this.store.updateClaimFailed(pending.claim.id, 'chain_send_failed', txHashFromError(error))
       throw new ClaimError(
         'chain_send_failed',
-        'The claim was recorded but the Base Sepolia transfer failed. It can be retried by an admin.',
+        `The claim was recorded but the ${this.claimConfig.networkName} transfer failed. It can be retried by an admin.`,
         serializeClaim(claim),
       )
     }
@@ -293,7 +298,7 @@ export class ClaimService {
     }
 
     try {
-      const txHash = await this.sender.sendTestcoin({
+      const txHash = await this.sender.sendToken({
         recipient: claimToRetry.evmRecipient,
         amountRaw: BigInt(claimToRetry.claimAmountRaw),
         idempotencyKey: claimToRetry.id,
@@ -304,7 +309,7 @@ export class ClaimService {
       const claim = await this.store.updateClaimFailed(claimToRetry.id, 'chain_send_failed', txHashFromError(error))
       throw new ClaimError(
         'chain_send_failed',
-        'The admin retry was recorded, but the Base Sepolia transfer failed.',
+        `The admin retry was recorded, but the ${this.claimConfig.networkName} transfer failed.`,
         serializeClaim(claim),
       )
     }
@@ -325,11 +330,15 @@ export function createClaimService(input: {
   store: ClaimStore
   sender: TokenSender
   env: Record<string, string | undefined>
+  claimConfig?: ClaimRuntimeConfig
 }) {
+  const claimConfig = input.claimConfig ?? BORO_MAINNET_CLAIM_CONFIG
+
   return new ClaimService(
     input.store,
     input.sender,
-    parsePositiveRawAmount(input.env.TESTCOIN_CLAIM_POOL_RAW, 'TESTCOIN_CLAIM_POOL_RAW'),
+    parsePositiveRawAmount(input.env[claimConfig.poolEnvName], claimConfig.poolEnvName),
+    claimConfig,
   )
 }
 

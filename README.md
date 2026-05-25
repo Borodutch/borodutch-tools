@@ -8,10 +8,10 @@ Monorepo for public tools at tools.borodutch.com.
 - apps/backend - Bun/TypeScript API that serves the frontend and processes $bdtch snapshot claims.
 - contracts - Foundry Solidity contracts and tests.
 
-The frontend exposes the production $BORO launch surface for claims, locking,
-and the confirmed Base mainnet token address. The Base Sepolia $testcoin claim
-backend remains in the repo as a testnet/staging path, but it is no longer the
-primary production UI.
+The frontend exposes the production $BORO claim and lock surfaces on Base
+mainnet, plus the confirmed Base mainnet token address. The Base Sepolia
+$testcoin claim backend remains in the repo as an explicitly enabled
+testnet/staging path, but it is not available in production.
 The contracts package also includes the Base mainnet $BORO Merkle distributor.
 
 ## Commands
@@ -54,16 +54,15 @@ keys. Verify `.env` is ignored before adding real secrets:
 git check-ignore .env .env.production
 ```
 
-## $bdtch snapshot claim flow
+## $bdtch snapshot $BORO claim flow
 
-The testnet claim backend lets a Solana $bdtch holder connect a Solana wallet,
-enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and
-submit that signed message to the backend. The backend verifies the exact
-message bytes against the Solana public key, records the claim before
-broadcasting, sends Base Sepolia $testcoin with an ERC20 `transfer`, and only
-marks the claim sent after a successful transaction receipt. This path is for
-staging/testnet operation; production $BORO claims use the Base mainnet Merkle
-distributor described in `docs/boro-merkle-distributor.md`.
+The production claim backend lets a Solana $bdtch holder connect a Solana
+wallet, enter a Base mainnet EVM recipient, sign a human-readable Solana
+message, and submit that signed message to the backend. The backend verifies
+the exact message bytes against the Solana public key, records the claim before
+broadcasting, sends Base mainnet $BORO with an ERC20 `transfer`, and only marks
+the claim sent after a successful transaction receipt. This reuses the original
+centralized claim path with Base mainnet BORO runtime configuration.
 
 Snapshot data is checked in at `apps/backend/data/bdtch-snapshot-2026-05-22.json`.
 
@@ -78,22 +77,25 @@ Snapshot facts:
 Allocation math uses raw integer values only:
 
 ```text
-claimAmountRaw = floor(TESTCOIN_CLAIM_POOL_RAW * holderBdtchRaw / snapshotSupplyRaw)
+claimAmountRaw = floor(BORO_CLAIM_POOL_RAW * holderBdtchRaw / snapshotSupplyRaw)
 ```
 
 Required runtime environment:
 
 - Copy `.env.example` to a local `.env` for development, or set these values as deployment secrets.
 - `.env` and `.env.*` files are ignored by git; keep real private keys out of tracked files.
-- `ENABLE_TESTNET_CLAIMS=true` is required to enable this legacy Base Sepolia
-  claim API in production. Normal `tools.borodutch.com` production deployments
-  should leave it unset or set it to `false` so no testnet private key is needed
-  in Easypanel build or runtime metadata.
 - `DATABASE_URL`
-- `BASE_SEPOLIA_RPC_URL` or `ALCHEMY_BASE_SEPOLIA_API_KEY`
-- `BASE_SEPOLIA_TESTCOIN_ADDRESS`
-- `BASE_SEPOLIA_AIRDROP_PRIVATE_KEY`
-- `TESTCOIN_CLAIM_POOL_RAW`
+- `BASE_MAINNET_RPC_URL`
+- `BASE_MAINNET_BORO_ADDRESS`
+- `BORO_CLAIM_SENDER_PRIVATE_KEY`
+- `BORO_CLAIM_POOL_RAW`
+
+Legacy Base Sepolia `$testcoin` claims are available only outside production
+when `ENABLE_TESTNET_CLAIMS=true` is set deliberately. In that mode, the
+backend uses `BASE_SEPOLIA_RPC_URL` or `ALCHEMY_BASE_SEPOLIA_API_KEY`,
+`BASE_SEPOLIA_TESTCOIN_ADDRESS`, `BASE_SEPOLIA_AIRDROP_PRIVATE_KEY`, and
+`TESTCOIN_CLAIM_POOL_RAW`. Production ignores `ENABLE_TESTNET_CLAIMS=true`
+and continues to select the Base mainnet BORO claim config.
 
 Production claim persistence requires Postgres. `NODE_ENV=production` fails startup
 when `DATABASE_URL` is missing, and `ALLOW_IN_MEMORY_CLAIMS=true` is rejected in
@@ -108,7 +110,13 @@ Optional admin retry environment:
 
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 
-Base Sepolia claim sends are serialized inside the backend process so concurrent claim requests do not race the airdrop wallet nonce. The sender treats the persisted claim id as an `idempotencyKey`: while the process is running, repeated sends for the same key, recipient, and amount reuse the same in-flight or completed transaction hash instead of broadcasting again. Reusing the same key for a different transfer is rejected. Failed sends are not cached, so an explicit retry/recovery path can attempt the same persisted claim again.
+Claim sends are serialized inside the backend process so concurrent claim
+requests do not race the hot wallet nonce. The sender treats the persisted claim
+id as an `idempotencyKey`: while the process is running, repeated sends for the
+same key, recipient, and amount reuse the same in-flight or completed
+transaction hash instead of broadcasting again. Reusing the same key for a
+different transfer is rejected. Failed sends are not cached, so an explicit
+retry/recovery path can attempt the same persisted claim again.
 
 Private keys must only be supplied through deployment secrets. They must not be committed, exposed to the frontend, or logged.
 
@@ -135,12 +143,11 @@ bun run start
 The frontend also includes the Base mainnet $BORO one-year lock flow. Configure
 it with `VITE_BASE_MAINNET_BORO_ADDRESS` and `VITE_BORO_LOCK_ADDRESS`.
 Do not configure legacy Base Sepolia `BASE_SEPOLIA_*` values for the normal
-production service unless deliberately re-enabling the testnet claim API with
-`ENABLE_TESTNET_CLAIMS=true`.
+production service.
 Deployment details for the lock contract live in `docs/boro-locking-contract.md`.
 
-Base mainnet `$BORO` treasury claim distribution is designed as an on-chain
-Merkle distributor. Deployment and operator notes live in
+Base mainnet `$BORO` treasury claim distribution can also be operated as an
+on-chain Merkle distributor later. Deployment and operator notes live in
 `docs/boro-merkle-distributor.md`.
 The full production launch checklist lives in `docs/boro-production-launch.md`.
 
