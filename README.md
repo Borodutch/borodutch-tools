@@ -22,6 +22,29 @@ The frontend exposes tools through shared navigation. The current tools are the 
 - bun run preview
 - forge test
 
+## Base mainnet $BORO
+
+The repo includes an upgradeable Base mainnet BOROTOKEN (`BORO`) contract,
+deployment script, treasury-transfer script, and operator runbook. See
+`docs/boro-mainnet-token.md`.
+
+Required deployment env:
+
+- `BASE_MAINNET_RPC_URL`
+- `BASE_MAINNET_DEPLOYER_PRIVATE_KEY`
+- `BORO_INITIAL_RECIPIENT`
+- `BORO_OWNER_OR_UPGRADE_ADMIN`
+- `BORO_PROXY_ADDRESS`, `BORO_TREASURY_ADDRESS`, and
+  `BORO_TREASURY_TRANSFER_AMOUNT_RAW` when transferring to treasury after
+  deployment
+
+Use only local ignored `.env` files or deployment secret managers for private
+keys. Verify `.env` is ignored before adding real secrets:
+
+```sh
+git check-ignore .env .env.production
+```
+
 ## $bdtch snapshot claim flow
 
 The claim app lets a Solana $bdtch holder connect a Solana wallet, enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and submit that signed message to the backend. The backend verifies the exact message bytes against the Solana public key, records the claim before broadcasting, and sends Base Sepolia $testcoin with an ERC20 `transfer`.
