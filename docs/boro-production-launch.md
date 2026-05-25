@@ -87,19 +87,13 @@ Token deployment:
 - Basescan verification status:
   - implementation:
     `https://basescan.org/address/0xC92736b9fEF54ECfe2A8B70Fc237793515D88324#code`
-    currently reports `Contract: Unverified`.
+    is verified as `BoroToken`.
   - proxy:
     `https://basescan.org/address/0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c#code`
-    currently reports `Contract: Unverified`.
-  - proxy implementation relation: the ERC1967 implementation slot on the proxy
-    resolves to `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324`, but BaseScan
-    has not linked the proxy UI yet because BaseScan source/proxy verification is
-    pending.
-  - current blocker: unattended verification has no `ETHERSCAN_API_KEY` /
-    `BASESCAN_API_KEY` available, and BaseScan manual verification forms require
-    reCAPTCHA. Public RPC bytecode checks confirm the deployed implementation and
-    proxy bytecode exactly match the repo artifacts compiled from `main` with
-    Solidity `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs.
+    is verified as `ERC1967Proxy`.
+  - proxy implementation relation: BaseScan links the proxy to
+    `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324` and shows `Read as Proxy` /
+    `Write as Proxy`.
   - manual implementation verification parameters:
     `contracts/src/BoroToken.sol:BoroToken`, no constructor arguments,
     Solidity `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs, MIT
@@ -112,15 +106,18 @@ Token deployment:
 
 Lock deployment and handoff:
 
-- lock implementation address
-- lock proxy address
-- deployer
-- token address
-- initial lock owner
-- final lock owner
-- deployment tx hashes
-- ownership/authority handoff tx hashes
-- block number
+- lock implementation address: `0x4086EE98cEE5929911EFbA6F77cc5c5E8b48b493`
+- lock proxy address: `0xfDD50a8eB2fc3Ef7325606aED1cf3FFBF3dC72e2`
+- deployer: `0xD991e2C2C7B2546e019192526100a148E087B7DC`
+- token address: `0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c`
+- initial lock owner: `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`
+- final lock owner: `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`
+- implementation deployment tx:
+  `0x4a606f614da6d1bc8000a3c969cb19ee913ea4a712bce7273b39705a751f00ac`
+- proxy deployment tx:
+  `0x80169f17cb4c3141e237d65e2f9403fe1f12ccd960feaba0b681c05142c9da11`
+- ownership/authority handoff tx hashes: not required; deployed with final owner
+- block number: `46480179`
 - chain id `8453`
 
 Distribution:
