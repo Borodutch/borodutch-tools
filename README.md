@@ -54,6 +54,8 @@ The backend creates these Postgres tables on startup: `claim_snapshots`, `holder
 
 Private keys must only be supplied through deployment secrets. They must not be committed, exposed to the frontend, or logged.
 
+Claim API rate limiting uses Bun's remote socket IP by default. Set `TRUST_PROXY_HEADERS=true` only when the deployment reverse proxy overwrites incoming client IP headers; with that flag enabled, the backend accepts normalized `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`, or `x-forwarded-for` values for per-client rate-limit keys.
+
 The frontend lock view reads `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS`, `VITE_TESTCOIN_LOCK_ADDRESS`, and optionally `VITE_BASE_SEPOLIA_RPC_URL` / `VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE`.
 
 ## Deployment

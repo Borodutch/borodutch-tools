@@ -5,33 +5,12 @@ import { MemoryClaimStore } from './claim/memoryStore.ts'
 import { PostgresClaimStore } from './claim/postgresStore.ts'
 import { ClaimError, createClaimService } from './claim/service.ts'
 import type { ClaimStore, TokenSender } from './claim/types.ts'
-
-class RateLimiter {
-  private readonly hits = new Map<string, number[]>()
-
-  constructor(
-    private readonly limit: number,
-    private readonly windowMs: number,
-  ) {}
-
-  take(key: string) {
-    const now = Date.now()
-    const timestamps = (this.hits.get(key) ?? []).filter((timestamp) => now - timestamp < this.windowMs)
-
-    if (timestamps.length >= this.limit) {
-      this.hits.set(key, timestamps)
-      return false
-    }
-
-    timestamps.push(now)
-    this.hits.set(key, timestamps)
-    return true
-  }
-}
+import { RateLimiter, claimRateLimitKey } from './rateLimit.ts'
 
 const port = Number(Bun.env.PORT ?? 3000)
 const missingRuntimeEnv = getMissingRuntimeEnv(Bun.env)
 const allowInMemoryClaims = Bun.env.ALLOW_IN_MEMORY_CLAIMS === 'true'
+const trustProxyHeaders = Bun.env.TRUST_PROXY_HEADERS === 'true'
 const runtimeReady = missingRuntimeEnv.length === 0 || (allowInMemoryClaims && missingRuntimeEnv.length === 1 && missingRuntimeEnv[0] === 'DATABASE_URL')
 const store = await createStore()
 const sender = createSender()
@@ -49,7 +28,7 @@ await store.initialize()
 
 Bun.serve({
   port,
-  async fetch(request) {
+  async fetch(request, server) {
     const url = new URL(request.url)
 
     if (request.method === 'OPTIONS') {
@@ -62,7 +41,12 @@ Bun.serve({
       }
 
       if (url.pathname.startsWith('/api/claim')) {
-        const limited = limiter.take(clientKey(request, url.pathname))
+        const limited = limiter.take(
+          claimRateLimitKey(request, url.pathname, {
+            remoteAddress: server.requestIP(request)?.address,
+            trustProxyHeaders,
+          }),
+        )
 
         if (!limited) {
           return json({ error: 'rate_limited', message: 'Too many requests. Please wait and retry.' }, 429)
@@ -194,10 +178,6 @@ function corsHeaders() {
     'Access-Control-Allow-Headers': 'content-type',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
-}
-
-function clientKey(request: Request, pathname: string) {
-  return `${request.headers.get('x-forwarded-for') ?? 'local'}:${pathname}`
 }
 
 function statusForClaimError(code: string) {
