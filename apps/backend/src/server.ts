@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BaseSepoliaTokenSender, getMissingRuntimeEnv } from './claim/chainSender.ts'
+import { MemoryClaimStore } from './claim/memoryStore.ts'
 import { createClaimStore, getClaimRuntimeReady } from './claim/runtime.ts'
 import { ClaimError, createClaimService } from './claim/service.ts'
 import type { TokenSender } from './claim/types.ts'
@@ -11,7 +12,7 @@ const port = Number(Bun.env.PORT ?? 3000)
 const missingRuntimeEnv = getMissingRuntimeEnv(Bun.env)
 const trustProxyHeaders = Bun.env.TRUST_PROXY_HEADERS === 'true'
 const runtimeReady = getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
-const store = await createClaimStore(Bun.env)
+const store = runtimeReady ? await createClaimStore(Bun.env) : new MemoryClaimStore()
 const sender = createSender()
 const service = createClaimService({
   store,
