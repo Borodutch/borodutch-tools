@@ -1,10 +1,10 @@
-export const TESTCOIN_DECIMALS = 18
-export const TESTCOIN_SYMBOL = '$testcoin'
+export const BORO_DECIMALS = 18
+export const BORO_SYMBOL = '$BORO'
 
-export function formatTestcoinAllocation(rawAmount: string): string {
-  const formatted = formatUnits(BigInt(rawAmount), TESTCOIN_DECIMALS)
+export function formatBoroAllocation(rawAmount: string): string {
+  const formatted = formatUnits(BigInt(rawAmount), BORO_DECIMALS)
 
-  return `${formatted} ${TESTCOIN_SYMBOL}`
+  return `${formatted} ${BORO_SYMBOL}`
 }
 
 function formatUnits(value: bigint, decimals: number): string {

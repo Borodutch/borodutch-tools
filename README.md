@@ -98,7 +98,8 @@ Private keys must only be supplied through deployment secrets. They must not be 
 
 Claim API rate limiting uses Bun's remote socket IP by default. Set `TRUST_PROXY_HEADERS=true` only when the deployment reverse proxy overwrites incoming client IP headers; with that flag enabled, the backend accepts normalized `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`, or `x-forwarded-for` values for per-client rate-limit keys.
 
-The frontend lock view reads `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS`, `VITE_TESTCOIN_LOCK_ADDRESS`, and optionally `VITE_BASE_SEPOLIA_RPC_URL` / `VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE`.
+The frontend lock view reads `VITE_BORO_TOKEN_ADDRESS`, `VITE_BORO_LOCK_ADDRESS`,
+and optionally `VITE_BASE_MAINNET_RPC_URL` / `VITE_BORO_LOCK_MATURED_PAGE_SIZE`.
 
 ## Deployment
 
@@ -112,10 +113,10 @@ bun run start
 
 `bun run start` launches the backend, which serves the built frontend from `apps/frontend/dist` and exposes `/api/claim/*`.
 
-The frontend also includes the Base Sepolia $testcoin one-year lock flow.
-Configure it with `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS` and
-`VITE_TESTCOIN_LOCK_ADDRESS`. Deployment details for the lock contract live in
-`docs/testcoin-locking-contract.md`.
+The frontend also includes the Base mainnet $BORO one-year lock flow.
+Configure it with `VITE_BORO_TOKEN_ADDRESS` and `VITE_BORO_LOCK_ADDRESS`.
+Deployment details for the lock contract live in
+`docs/boro-locking-contract.md`.
 
 Base mainnet `$BORO` treasury claim distribution is designed as an on-chain
 Merkle distributor. Deployment and operator notes live in

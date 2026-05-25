@@ -1,6 +1,6 @@
 import bs58 from 'bs58'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { formatTestcoinAllocation } from './claim-format'
+import { formatBoroAllocation } from './claim-format'
 import { connectSolanaWallet, NO_SOLANA_WALLET_MESSAGE, type SolanaWallet } from './solana-wallet'
 
 type ConfigResponse = {
@@ -169,7 +169,7 @@ export function App() {
   return (
     <section class="min-w-0 w-[calc(100vw-2rem)] rounded-lg border border-neutral-300 bg-white p-4 shadow-sm md:w-auto">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-xl font-semibold">Claim $testcoin</h1>
+        <h1 class="text-xl font-semibold">Claim $BORO</h1>
         <StatusPill status={status} />
       </div>
 
@@ -231,8 +231,8 @@ export function App() {
 
 function allocationAmount(allocation: AllocationResponse | null): string {
   if (!allocation) return '...'
-  if (!allocation.eligible) return formatTestcoinAllocation('0')
-  return allocation.claimAmountRaw ? formatTestcoinAllocation(allocation.claimAmountRaw) : '...'
+  if (!allocation.eligible) return formatBoroAllocation('0')
+  return allocation.claimAmountRaw ? formatBoroAllocation(allocation.claimAmountRaw) : '...'
 }
 
 function StatusPill({ status }: { status: string }) {
