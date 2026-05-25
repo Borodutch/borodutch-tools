@@ -52,6 +52,8 @@ Required runtime environment:
 
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 
+Base Sepolia claim sends are serialized inside the backend process so concurrent claim requests do not race the airdrop wallet nonce. The sender treats the persisted claim id as an `idempotencyKey`: while the process is running, repeated sends for the same key, recipient, and amount reuse the same in-flight or completed transaction hash instead of broadcasting again. Reusing the same key for a different transfer is rejected. Failed sends are not cached, so an explicit retry/recovery path can attempt the same persisted claim again.
+
 Private keys must only be supplied through deployment secrets. They must not be committed, exposed to the frontend, or logged.
 
 The frontend lock view reads `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS`, `VITE_TESTCOIN_LOCK_ADDRESS`, and optionally `VITE_BASE_SEPOLIA_RPC_URL` / `VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE`.
