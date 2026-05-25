@@ -4,6 +4,16 @@ import type { ClaimStore } from './types.ts'
 
 type RuntimeEnv = Record<string, string | undefined>
 
+export function getTestnetClaimsEnabled(env: RuntimeEnv) {
+  const explicitValue = env.ENABLE_TESTNET_CLAIMS?.trim().toLowerCase()
+
+  if (explicitValue) {
+    return ['1', 'true', 'yes', 'on'].includes(explicitValue)
+  }
+
+  return env.NODE_ENV !== 'production'
+}
+
 export function getClaimRuntimeReady(env: RuntimeEnv, missingRuntimeEnv: string[]) {
   assertInMemoryClaimStoreAllowed(env)
 

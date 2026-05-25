@@ -66,6 +66,12 @@ Do not set `VITE_BASE_MAINNET_BORO_ADDRESS` to a placeholder. The UI treats a
 missing or zero address as pending so a fake contract address is never shown as
 final.
 
+Do not include legacy Base Sepolia `BASE_SEPOLIA_*` values in the normal
+production service build args or runtime environment. The old `$testcoin` claim
+API is disabled by default in production; only a deliberate staging/testnet
+deployment should opt back in with `ENABLE_TESTNET_CLAIMS=true` and deployment
+secrets.
+
 ## Required metadata to record
 
 Token deployment:
@@ -85,19 +91,13 @@ Token deployment:
 - Basescan verification status:
   - implementation:
     `https://basescan.org/address/0xC92736b9fEF54ECfe2A8B70Fc237793515D88324#code`
-    currently reports `Contract: Unverified`.
+    is verified as `BoroToken`.
   - proxy:
     `https://basescan.org/address/0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c#code`
-    currently reports `Contract: Unverified`.
-  - proxy implementation relation: the ERC1967 implementation slot on the proxy
-    resolves to `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324`, but BaseScan
-    has not linked the proxy UI yet because BaseScan source/proxy verification is
-    pending.
-  - current blocker: unattended verification has no `ETHERSCAN_API_KEY` /
-    `BASESCAN_API_KEY` available, and BaseScan manual verification forms require
-    reCAPTCHA. Public RPC bytecode checks confirm the deployed implementation and
-    proxy bytecode exactly match the repo artifacts compiled from `main` with
-    Solidity `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs.
+    is verified as `ERC1967Proxy`.
+  - proxy implementation relation: BaseScan links the proxy to
+    `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324` and shows `Read as Proxy` /
+    `Write as Proxy`.
   - manual implementation verification parameters:
     `contracts/src/BoroToken.sol:BoroToken`, no constructor arguments,
     Solidity `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs, MIT

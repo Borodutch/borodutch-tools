@@ -30,7 +30,7 @@ changes on every UUPS upgrade — append a new row to "Upgrade history" each tim
 | Basescan (proxy) | https://basescan.org/address/0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c |
 | Basescan (implementation) | https://basescan.org/address/0xC92736b9fEF54ECfe2A8B70Fc237793515D88324 |
 | Verification artifacts | [`verification/base-mainnet/`](../verification/base-mainnet/README.md) |
-| Verified on Basescan | Not yet — see verification artifacts |
+| Verified on Basescan | Yes — proxy linked to implementation |
 
 > Deployed and confirmed on Base mainnet. The proxy address is the permanent
 > `$BORO` token address (set `VITE_BASE_MAINNET_BORO_ADDRESS` to it).

@@ -27,6 +27,7 @@ export class ClaimService {
     return {
       app: DOMAIN,
       purpose: PURPOSE,
+      enabled: true,
       chainId: BASE_SEPOLIA_CHAIN_ID,
       snapshot,
       claimPoolRaw: this.claimPoolRaw.toString(),

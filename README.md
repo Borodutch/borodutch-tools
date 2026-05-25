@@ -85,6 +85,10 @@ Required runtime environment:
 
 - Copy `.env.example` to a local `.env` for development, or set these values as deployment secrets.
 - `.env` and `.env.*` files are ignored by git; keep real private keys out of tracked files.
+- `ENABLE_TESTNET_CLAIMS=true` is required to enable this legacy Base Sepolia
+  claim API in production. Normal `tools.borodutch.com` production deployments
+  should leave it unset or set it to `false` so no testnet private key is needed
+  in Easypanel build or runtime metadata.
 - `DATABASE_URL`
 - `BASE_SEPOLIA_RPC_URL` or `ALCHEMY_BASE_SEPOLIA_API_KEY`
 - `BASE_SEPOLIA_TESTCOIN_ADDRESS`
@@ -130,6 +134,9 @@ bun run start
 
 The frontend also includes the Base mainnet $BORO one-year lock flow. Configure
 it with `VITE_BASE_MAINNET_BORO_ADDRESS` and `VITE_BORO_LOCK_ADDRESS`.
+Do not configure legacy Base Sepolia `BASE_SEPOLIA_*` values for the normal
+production service unless deliberately re-enabling the testnet claim API with
+`ENABLE_TESTNET_CLAIMS=true`.
 Deployment details for the lock contract live in `docs/boro-locking-contract.md`.
 
 Base mainnet `$BORO` treasury claim distribution is designed as an on-chain
