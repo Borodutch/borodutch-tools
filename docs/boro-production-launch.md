@@ -62,6 +62,12 @@ Do not set `VITE_BASE_MAINNET_BORO_ADDRESS` to a placeholder. The UI treats a
 missing or zero address as pending so a fake contract address is never shown as
 final.
 
+Do not include legacy Base Sepolia `BASE_SEPOLIA_*` values in the normal
+production service build args or runtime environment. The old `$testcoin` claim
+API is disabled by default in production; only a deliberate staging/testnet
+deployment should opt back in with `ENABLE_TESTNET_CLAIMS=true` and deployment
+secrets.
+
 ## Required metadata to record
 
 Token deployment:

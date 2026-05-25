@@ -2,29 +2,32 @@ import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BaseSepoliaTokenSender, getMissingRuntimeEnv } from './claim/chainSender.ts'
-import { MemoryClaimStore } from './claim/memoryStore.ts'
-import { createClaimStore, getClaimRuntimeReady } from './claim/runtime.ts'
+import { createClaimStore, getClaimRuntimeReady, getTestnetClaimsEnabled } from './claim/runtime.ts'
 import { ClaimError, createClaimService } from './claim/service.ts'
 import type { TokenSender } from './claim/types.ts'
 import { RateLimiter, claimRateLimitKey } from './rateLimit.ts'
 
 const port = Number(Bun.env.PORT ?? 3000)
-const missingRuntimeEnv = getMissingRuntimeEnv(Bun.env)
+const testnetClaimsEnabled = getTestnetClaimsEnabled(Bun.env)
+const missingRuntimeEnv = testnetClaimsEnabled ? getMissingRuntimeEnv(Bun.env) : []
 const trustProxyHeaders = Bun.env.TRUST_PROXY_HEADERS === 'true'
-const runtimeReady = getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
-const store = runtimeReady ? await createClaimStore(Bun.env) : new MemoryClaimStore()
-const sender = createSender()
-const service = createClaimService({
-  store,
-  sender,
-  env: {
-    ...Bun.env,
-    TESTCOIN_CLAIM_POOL_RAW: Bun.env.TESTCOIN_CLAIM_POOL_RAW ?? '1',
-  },
-})
+const runtimeReady = testnetClaimsEnabled && getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
+const store = testnetClaimsEnabled ? await createClaimStore(Bun.env) : null
+const sender = testnetClaimsEnabled ? createSender() : null
+const service =
+  store && sender
+    ? createClaimService({
+        store,
+        sender,
+        env: {
+          ...Bun.env,
+          TESTCOIN_CLAIM_POOL_RAW: Bun.env.TESTCOIN_CLAIM_POOL_RAW ?? '1',
+        },
+      })
+    : null
 const limiter = new RateLimiter(60, 60_000)
 
-await store.initialize()
+await store?.initialize()
 
 Bun.serve({
   port,
@@ -74,7 +77,27 @@ console.log(`Borodutch Tools backend listening on :${port}`)
 
 async function handleClaimApi(request: Request, url: URL) {
   if (request.method === 'GET' && url.pathname === '/api/claim/config') {
-    return json(service.getConfig(runtimeReady ? [] : missingRuntimeEnv))
+    if (!testnetClaimsEnabled) {
+      return json({
+        app: 'Borodutch Tools',
+        purpose: 'Base Sepolia $testcoin claim',
+        enabled: false,
+        disabledReason: 'Base Sepolia testnet claims are disabled in this deployment.',
+        missingRuntimeEnv: [],
+      })
+    }
+
+    return json(getClaimService().getConfig(runtimeReady ? [] : missingRuntimeEnv))
+  }
+
+  if (!testnetClaimsEnabled) {
+    return json(
+      {
+        error: 'claim_api_disabled',
+        message: 'Base Sepolia testnet claim API is disabled in this deployment.',
+      },
+      410,
+    )
   }
 
   if (request.method === 'GET' && url.pathname === '/api/claim/allocation') {
@@ -84,24 +107,24 @@ async function handleClaimApi(request: Request, url: URL) {
       return json({ error: 'runtime_not_configured', missingRuntimeEnv }, 503)
     }
 
-    return json(await service.getAllocation(solanaAddress))
+    return json(await getClaimService().getAllocation(solanaAddress))
   }
 
   if (request.method === 'POST' && url.pathname === '/api/claim/allocation-message') {
     const body = (await request.json()) as { solanaAddress: unknown }
-    return json(service.getAllocationCheckMessage(body.solanaAddress), 201)
+    return json(getClaimService().getAllocationCheckMessage(body.solanaAddress), 201)
   }
 
   if (request.method === 'POST' && url.pathname === '/api/claim/allocation-check') {
     ensureRuntimeReady()
     const body = (await request.json()) as { solanaAddress: unknown; signatureBase58: unknown }
-    return json(await service.checkAllocation(body))
+    return json(await getClaimService().checkAllocation(body))
   }
 
   if (request.method === 'POST' && url.pathname === '/api/claim/challenges') {
     ensureRuntimeReady()
     const body = (await request.json()) as { solanaAddress: unknown; evmRecipient: unknown }
-    return json(await service.createChallenge(body), 201)
+    return json(await getClaimService().createChallenge(body), 201)
   }
 
   if (request.method === 'POST' && url.pathname === '/api/claim/submit') {
@@ -112,7 +135,7 @@ async function handleClaimApi(request: Request, url: URL) {
       evmRecipient: unknown
       signatureBase58: unknown
     }
-    return json(await service.submitClaim(body), 202)
+    return json(await getClaimService().submitClaim(body), 202)
   }
 
   if (request.method === 'POST' && url.pathname === '/api/claim/admin/retry') {
@@ -120,7 +143,7 @@ async function handleClaimApi(request: Request, url: URL) {
     ensureClaimAdminAuthorized(request)
     const body = (await request.json()) as { claimId: unknown; allowMissingTxRetry?: unknown }
     return json(
-      await service.retryFailedClaim({
+      await getClaimService().retryFailedClaim({
         claimId: body.claimId,
         allowMissingTxRetry: body.allowMissingTxRetry === true,
       }),
@@ -154,6 +177,14 @@ function ensureRuntimeReady() {
       missingRuntimeEnv,
     )
   }
+}
+
+function getClaimService() {
+  if (!service) {
+    throw new ClaimError('runtime_not_configured', 'Claim service is not configured.')
+  }
+
+  return service
 }
 
 function ensureClaimAdminAuthorized(request: Request) {
