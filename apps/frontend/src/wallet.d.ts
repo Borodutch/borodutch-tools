@@ -13,4 +13,9 @@ type SolanaProvider = {
 
 interface Window {
   solana?: SolanaProvider
+  phantom?: {
+    solana?: SolanaProvider
+  }
+  solflare?: SolanaProvider
+  backpack?: SolanaProvider | { solana?: SolanaProvider }
 }

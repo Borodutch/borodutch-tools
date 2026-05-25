@@ -1,0 +1,139 @@
+import { describe, expect, it } from 'bun:test'
+import {
+  connectSolanaWallet,
+  extractSignatureBytes,
+  findSolanaWalletProvider,
+  waitForSolanaWalletProvider,
+} from '../src/solana-wallet'
+
+describe('solana wallet provider discovery', () => {
+  it('returns a friendly no-wallet error', async () => {
+    const win = testWindow()
+
+    await expect(connectSolanaWallet(win, 1)).rejects.toThrow('No Solana wallet found')
+  })
+
+  it('waits for delayed provider injection', async () => {
+    const win = testWindow()
+    const provider = injectedProvider('DelayedPublicKey')
+    const pendingWallet = waitForSolanaWalletProvider(win, 500)
+
+    setTimeout(() => {
+      win.phantom = { solana: provider }
+      win.dispatchEvent(new Event('phantom#initialized'))
+    }, 10)
+
+    const wallet = await pendingWallet
+
+    expect(wallet).not.toBeNull()
+    await expect(wallet?.connect()).resolves.toBe('DelayedPublicKey')
+  })
+
+  it('discovers Solana Wallet Standard providers', async () => {
+    const win = testWindow()
+    const pendingWallet = waitForSolanaWalletProvider(win, 500)
+
+    setTimeout(() => {
+      win.dispatchEvent(
+        new CustomEvent('wallet-standard:register-wallet', {
+          detail: standardWallet('StandardPublicKey', new Uint8Array([10, 11, 12])),
+        }),
+      )
+    }, 10)
+
+    const wallet = await pendingWallet
+
+    expect(wallet?.label).toBe('Standard wallet')
+    await expect(wallet?.connect()).resolves.toBe('StandardPublicKey')
+    await expect(wallet?.signMessage('hello')).resolves.toEqual(new Uint8Array([10, 11, 12]))
+  })
+
+  it('connects with an injected provider public key', async () => {
+    const win = testWindow()
+    win.solana = injectedProvider('ConnectedPublicKey')
+
+    const connected = await connectSolanaWallet(win)
+
+    expect(connected.publicKey).toBe('ConnectedPublicKey')
+  })
+
+  it('signs with injected providers that return direct signature bytes', async () => {
+    const win = testWindow()
+    win.solana = injectedProvider('ConnectedPublicKey', new Uint8Array([7, 8, 9]))
+
+    const wallet = findSolanaWalletProvider(win)
+
+    await expect(wallet?.signMessage('hello')).resolves.toEqual(new Uint8Array([7, 8, 9]))
+  })
+
+  it('signs with injected providers that return a signature object', async () => {
+    const win = testWindow()
+    win.phantom = { solana: injectedProvider('ConnectedPublicKey', { signature: new Uint8Array([4, 5, 6]) }) }
+
+    const wallet = findSolanaWalletProvider(win)
+
+    await expect(wallet?.signMessage('hello')).resolves.toEqual(new Uint8Array([4, 5, 6]))
+  })
+
+  it('extracts direct and object signature results', () => {
+    const signature = new Uint8Array([1, 2, 3])
+
+    expect(extractSignatureBytes(signature)).toEqual(signature)
+    expect(extractSignatureBytes({ signature })).toEqual(signature)
+  })
+})
+
+function testWindow() {
+  const target = new EventTarget()
+  const timers = globalThis
+
+  return {
+    addEventListener: target.addEventListener.bind(target),
+    removeEventListener: target.removeEventListener.bind(target),
+    dispatchEvent: target.dispatchEvent.bind(target),
+    setTimeout: timers.setTimeout.bind(timers),
+    clearTimeout: timers.clearTimeout.bind(timers),
+    setInterval: timers.setInterval.bind(timers),
+    clearInterval: timers.clearInterval.bind(timers),
+  } as Window & {
+    phantom?: {
+      solana?: ReturnType<typeof injectedProvider>
+    }
+    solana?: ReturnType<typeof injectedProvider>
+  }
+}
+
+function injectedProvider(publicKey: string, signature: Uint8Array | { signature: Uint8Array } = { signature: new Uint8Array([4, 5, 6]) }) {
+  return {
+    isPhantom: true,
+    publicKey: {
+      toBase58: () => publicKey,
+    },
+    connect: async () => ({
+      publicKey: {
+        toBase58: () => publicKey,
+      },
+    }),
+    signMessage: async () => signature,
+  }
+}
+
+function standardWallet(address: string, signature: Uint8Array) {
+  const account = {
+    address,
+    chains: ['solana:mainnet'],
+  }
+
+  return {
+    name: 'Standard wallet',
+    accounts: [account],
+    features: {
+      'standard:connect': {
+        connect: async () => ({ accounts: [account] }),
+      },
+      'solana:signMessage': {
+        signMessage: async () => ({ signature }),
+      },
+    },
+  }
+}
