@@ -7,6 +7,71 @@ import { normalizeEvmAddress } from './validation.ts'
 const erc20Abi = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
 
 export class BaseSepoliaTokenSender implements TokenSender {
+  private readonly sender: IdempotentSerializedTokenSender
+
+  constructor(env: Record<string, string | undefined>) {
+    this.sender = new IdempotentSerializedTokenSender(new BaseSepoliaTokenTransferSender(env))
+  }
+
+  sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
+    return this.sender.sendTestcoin(input)
+  }
+}
+
+export class IdempotentSerializedTokenSender implements TokenSender {
+  private readonly sendsByIdempotencyKey = new Map<string, { transferKey: string; promise: Promise<string> }>()
+  private queue: Promise<void> = Promise.resolve()
+
+  constructor(private readonly delegate: TokenSender) {}
+
+  sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
+    const idempotencyKey = input.idempotencyKey.trim()
+
+    if (!idempotencyKey) {
+      return Promise.reject(new Error('idempotency key is required'))
+    }
+
+    const recipient = normalizeEvmAddress(input.recipient)
+    const transferKey = `${recipient}:${input.amountRaw.toString()}`
+    const existing = this.sendsByIdempotencyKey.get(idempotencyKey)
+
+    if (existing) {
+      if (existing.transferKey !== transferKey) {
+        return Promise.reject(new Error('idempotency key reused for a different transfer'))
+      }
+
+      return existing.promise
+    }
+
+    const promise = this.enqueue(() =>
+      this.delegate.sendTestcoin({
+        ...input,
+        recipient,
+        idempotencyKey,
+      }),
+    )
+
+    this.sendsByIdempotencyKey.set(idempotencyKey, { transferKey, promise })
+    promise.catch(() => {
+      if (this.sendsByIdempotencyKey.get(idempotencyKey)?.promise === promise) {
+        this.sendsByIdempotencyKey.delete(idempotencyKey)
+      }
+    })
+
+    return promise
+  }
+
+  private enqueue<T>(operation: () => Promise<T>) {
+    const queued = this.queue.catch(() => undefined).then(operation)
+    this.queue = queued.then(
+      () => undefined,
+      () => undefined,
+    )
+    return queued
+  }
+}
+
+class BaseSepoliaTokenTransferSender implements TokenSender {
   private readonly rpcUrl: string
   private readonly tokenAddress: `0x${string}`
   private readonly privateKey: `0x${string}`

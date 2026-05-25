@@ -61,6 +61,8 @@ the backend refuses to create an in-memory claim store.
 
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 
+Base Sepolia claim sends are serialized inside the backend process so concurrent claim requests do not race the airdrop wallet nonce. The sender treats the persisted claim id as an `idempotencyKey`: while the process is running, repeated sends for the same key, recipient, and amount reuse the same in-flight or completed transaction hash instead of broadcasting again. Reusing the same key for a different transfer is rejected. Failed sends are not cached, so an explicit retry/recovery path can attempt the same persisted claim again.
+
 Private keys must only be supplied through deployment secrets. They must not be committed, exposed to the frontend, or logged.
 
 Claim API rate limiting uses Bun's remote socket IP by default. Set `TRUST_PROXY_HEADERS=true` only when the deployment reverse proxy overwrites incoming client IP headers; with that flag enabled, the backend accepts normalized `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`, or `x-forwarded-for` values for per-client rate-limit keys.
