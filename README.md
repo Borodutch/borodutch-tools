@@ -98,7 +98,11 @@ Private keys must only be supplied through deployment secrets. They must not be 
 
 Claim API rate limiting uses Bun's remote socket IP by default. Set `TRUST_PROXY_HEADERS=true` only when the deployment reverse proxy overwrites incoming client IP headers; with that flag enabled, the backend accepts normalized `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`, or `x-forwarded-for` values for per-client rate-limit keys.
 
-The frontend lock view reads `VITE_BORO_TOKEN_ADDRESS`, `VITE_BORO_LOCK_ADDRESS`,
+The frontend contract-address and lock views read `VITE_BORO_TOKEN_ADDRESS`.
+When it is unset or set to the zero address, the contract-address panel shows a
+pending Base mainnet state instead of a fake final address. After deployment,
+set it to the confirmed `$BORO` token address so the frontend shows a copyable
+address and Basescan link. The lock view also reads `VITE_BORO_LOCK_ADDRESS`,
 and optionally `VITE_BASE_MAINNET_RPC_URL` / `VITE_BORO_LOCK_MATURED_PAGE_SIZE`.
 
 ## Deployment
@@ -115,6 +119,9 @@ bun run start
 
 The frontend also includes the Base mainnet $BORO one-year lock flow.
 Configure it with `VITE_BORO_TOKEN_ADDRESS` and `VITE_BORO_LOCK_ADDRESS`.
+Before the token address is confirmed, leave `VITE_BORO_TOKEN_ADDRESS` unset or
+set to `0x0000000000000000000000000000000000000000`; the frontend will show the
+contract address as pending.
 Deployment details for the lock contract live in
 `docs/boro-locking-contract.md`.
 
