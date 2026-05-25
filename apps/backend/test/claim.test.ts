@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { calculateClaimAmountRaw } from '../src/claim/math.ts'
 import { buildAllocationCheckMessage, buildClaimMessage } from '../src/claim/message.ts'
 import { MemoryClaimStore } from '../src/claim/memoryStore.ts'
+import { createClaimStore, getClaimRuntimeReady } from '../src/claim/runtime.ts'
 import { verifySolanaSignature } from '../src/claim/signature.ts'
 import { ClaimService } from '../src/claim/service.ts'
 import { snapshotMetadata } from '../src/claim/snapshot.ts'
@@ -158,11 +159,89 @@ describe('claim service', () => {
   })
 })
 
+describe('claim runtime store configuration', () => {
+  it('fails closed in production when DATABASE_URL is missing', async () => {
+    const env = {
+      NODE_ENV: 'production',
+      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
+      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
+      TESTCOIN_CLAIM_POOL_RAW: '1',
+    }
+
+    expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(false)
+    await expect(createClaimStore(env)).rejects.toThrow('DATABASE_URL is required for production claim persistence.')
+  })
+
+  it('rejects explicit in-memory claims in production', async () => {
+    const env = {
+      NODE_ENV: 'production',
+      ALLOW_IN_MEMORY_CLAIMS: 'true',
+      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
+      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
+      TESTCOIN_CLAIM_POOL_RAW: '1',
+    }
+
+    expect(() => getClaimRuntimeReady(env, ['DATABASE_URL'])).toThrow(
+      'ALLOW_IN_MEMORY_CLAIMS=true is not allowed in production.',
+    )
+    await expect(createClaimStore(env)).rejects.toThrow('ALLOW_IN_MEMORY_CLAIMS=true is not allowed in production.')
+  })
+
+  it('allows explicit in-memory claims outside production', async () => {
+    const env = {
+      NODE_ENV: 'development',
+      ALLOW_IN_MEMORY_CLAIMS: 'true',
+      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
+      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
+      TESTCOIN_CLAIM_POOL_RAW: '1',
+    }
+
+    expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(true)
+    await expect(createClaimStore(env)).resolves.toBeInstanceOf(MemoryClaimStore)
+  })
+
+  it('requires explicit in-memory opt-in outside production', async () => {
+    const env = {
+      NODE_ENV: 'test',
+      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
+      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
+      TESTCOIN_CLAIM_POOL_RAW: '1',
+    }
+
+    expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(false)
+    await expect(createClaimStore(env)).rejects.toThrow(
+      'DATABASE_URL is required unless ALLOW_IN_MEMORY_CLAIMS=true is set for local development or test.',
+    )
+  })
+
+  it('rejects in-memory claims outside local development and test', async () => {
+    const env = {
+      NODE_ENV: 'staging',
+      ALLOW_IN_MEMORY_CLAIMS: 'true',
+      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
+      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
+      TESTCOIN_CLAIM_POOL_RAW: '1',
+    }
+
+    expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(false)
+    await expect(createClaimStore(env)).rejects.toThrow(
+      'DATABASE_URL is required unless ALLOW_IN_MEMORY_CLAIMS=true is set for local development or test.',
+    )
+  })
+})
+
 function mockSender(txHash: string): TokenSender {
   return {
     sendTestcoin: vi.fn(async () => txHash),
   }
 }
+
+const privateKey = `0x${'1'.repeat(64)}`
 
 function seedHolder(store: MemoryClaimStore, owner: string) {
   const holder = store.getHolder('8FJG8Am7X7kD69nDs3v4f5pBJkVahp39MQvvUuB2Kk4A')
