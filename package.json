@@ -15,7 +15,7 @@
     "preview": "bun --filter @borodutch-tools/frontend preview",
     "check": "bun --filter @borodutch-tools/frontend check && bun --filter @borodutch-tools/backend check",
     "start": "bun --filter @borodutch-tools/backend start",
-    "test": "bun --filter @borodutch-tools/backend test"
+    "test": "bun --filter @borodutch-tools/frontend test && bun --filter @borodutch-tools/backend test"
   },
   "packageManager": "bun@1.2.4"
 }

@@ -1,5 +1,6 @@
 import bs58 from 'bs58'
 import { useEffect, useMemo, useState } from 'preact/hooks'
+import { connectSolanaWallet, NO_SOLANA_WALLET_MESSAGE, type SolanaWallet } from './solana-wallet'
 
 type ConfigResponse = {
   missingRuntimeEnv: string[]
@@ -47,10 +48,10 @@ export function App() {
   const [recipient, setRecipient] = useState('')
   const [allocation, setAllocation] = useState<AllocationResponse | null>(null)
   const [claim, setClaim] = useState<ClaimRecord | null>(null)
+  const [solanaWallet, setSolanaWallet] = useState<SolanaWallet | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
-  const provider = typeof window !== 'undefined' ? window.solana : undefined
   const missingConfig = config?.missingRuntimeEnv ?? []
   const canClaim = Boolean(allocation?.eligible && recipient && missingConfig.length === 0)
 
@@ -70,29 +71,43 @@ export function App() {
       .catch((apiError: Error) => setError(apiError.message))
   }, [])
 
+  useEffect(() => {
+    if (!solanaWallet?.on) return undefined
+
+    const clearSolanaState = (value?: unknown) => {
+      const nextPublicKey = publicKeyFromWalletEvent(value)
+      setWalletAddress(nextPublicKey)
+      setAllocation(null)
+      setClaim(null)
+    }
+
+    const cleanupAccount = solanaWallet.on('accountChanged', clearSolanaState)
+    const cleanupDisconnect = solanaWallet.on('disconnect', () => clearSolanaState())
+    return () => {
+      cleanupAccount()
+      cleanupDisconnect()
+    }
+  }, [solanaWallet])
+
   async function getSolanaPublicKey() {
-    if (!provider) {
-      throw new Error('No Solana wallet found in this browser.')
+    const connection = await connectSolanaWallet()
+    setSolanaWallet(connection.wallet)
+
+    if (walletAddress !== connection.publicKey) {
+      setAllocation(null)
+      setClaim(null)
     }
 
-    const connection = await provider.connect()
-    const publicKey = connection.publicKey?.toBase58() ?? provider.publicKey?.toBase58()
-
-    if (!publicKey) {
-      throw new Error('Wallet did not return a Solana public key.')
-    }
-
-    setWalletAddress(publicKey)
-    return publicKey
+    setWalletAddress(connection.publicKey)
+    return connection
   }
 
-  async function signMessage(message: string) {
-    if (!provider) {
-      throw new Error('No Solana wallet found in this browser.')
+  async function signMessage(message: string, wallet = solanaWallet) {
+    if (!wallet) {
+      throw new Error(NO_SOLANA_WALLET_MESSAGE)
     }
 
-    const signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8')
-    const signature = signed instanceof Uint8Array ? signed : signed.signature
+    const signature = await wallet.signMessage(message)
     return bs58.encode(signature)
   }
 
@@ -101,12 +116,12 @@ export function App() {
     setBusy('allocation')
 
     try {
-      const publicKey = await getSolanaPublicKey()
+      const { publicKey, wallet } = await getSolanaPublicKey()
       const proof = await api<AllocationMessageResponse>('/api/claim/allocation-message', {
         method: 'POST',
         body: JSON.stringify({ solanaAddress: publicKey }),
       })
-      const signatureBase58 = await signMessage(proof.message)
+      const signatureBase58 = await signMessage(proof.message, wallet)
       const nextAllocation = await api<AllocationResponse>('/api/claim/allocation-check', {
         method: 'POST',
         body: JSON.stringify({ solanaAddress: publicKey, signatureBase58 }),
@@ -126,18 +141,18 @@ export function App() {
     setBusy('challenge')
 
     try {
-      const publicKey = walletAddress || (await getSolanaPublicKey())
+      const connection = walletAddress && solanaWallet ? { publicKey: walletAddress, wallet: solanaWallet } : await getSolanaPublicKey()
       const nextChallenge = await api<ChallengeResponse>('/api/claim/challenges', {
         method: 'POST',
-        body: JSON.stringify({ solanaAddress: publicKey, evmRecipient: recipient }),
+        body: JSON.stringify({ solanaAddress: connection.publicKey, evmRecipient: recipient }),
       })
       const result = await api<SubmitResponse>('/api/claim/submit', {
         method: 'POST',
         body: JSON.stringify({
           challengeId: nextChallenge.challengeId,
-          solanaAddress: publicKey,
+          solanaAddress: connection.publicKey,
           evmRecipient: recipient,
-          signatureBase58: await signMessage(nextChallenge.message),
+          signatureBase58: await signMessage(nextChallenge.message, connection.wallet),
         }),
       })
 
@@ -163,7 +178,7 @@ export function App() {
           onClick={checkAllocation}
           type="button"
         >
-          {busy === 'allocation' ? 'Checking allocation' : walletAddress ? 'Check allocation again' : 'Check allocation'}
+          {busy === 'allocation' ? 'Checking allocation' : walletAddress ? 'Check allocation again' : 'Connect and check allocation'}
         </button>
 
         <dl class="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -257,4 +272,19 @@ function shorten(value?: string, start = 6, end = 4) {
 
 function messageForError(error: unknown) {
   return error instanceof Error ? error.message : 'Unexpected error'
+}
+
+function publicKeyFromWalletEvent(value: unknown) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+
+  if (typeof value === 'object' && 'toBase58' in value && typeof value.toBase58 === 'function') {
+    return value.toBase58()
+  }
+
+  if (typeof value === 'object' && 'publicKey' in value) {
+    return publicKeyFromWalletEvent(value.publicKey)
+  }
+
+  return ''
 }
