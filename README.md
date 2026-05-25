@@ -44,6 +44,8 @@ claimAmountRaw = floor(TESTCOIN_CLAIM_POOL_RAW * holderBdtchRaw / snapshotSupply
 
 Required runtime environment:
 
+- Copy `.env.example` to a local `.env` for development, or set these values as deployment secrets.
+- `.env` and `.env.*` files are ignored by git; keep real private keys out of tracked files.
 - `DATABASE_URL`
 - `BASE_SEPOLIA_RPC_URL` or `ALCHEMY_BASE_SEPOLIA_API_KEY`
 - `BASE_SEPOLIA_TESTCOIN_ADDRESS`

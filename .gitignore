@@ -6,3 +6,8 @@ contracts/out
 broadcast
 .DS_Store
 *.log
+
+# Environment and deployment secrets
+.env
+.env.*
+!.env.example
