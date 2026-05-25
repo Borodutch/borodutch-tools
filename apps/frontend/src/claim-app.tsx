@@ -59,18 +59,19 @@ export function App() {
 
   const missingConfig = config?.missingRuntimeEnv ?? []
   const claimsEnabled = config?.enabled === true && missingConfig.length === 0
-  const canClaim = Boolean(allocation?.eligible && recipient && claimsEnabled)
+  const activeClaim = claim ?? allocation?.existingClaim ?? null
+  const canClaim = Boolean(allocation?.eligible && recipient && claimsEnabled && !activeClaim)
 
   const status = useMemo(() => {
-    if (claim?.status === 'failed') return 'failed'
-    if (claim?.status === 'confirmed') return 'confirmed'
-    if (claim?.status === 'sent' || claim?.txHash) return 'sent'
+    if (activeClaim?.status === 'failed') return 'failed'
+    if (activeClaim?.status === 'confirmed') return 'confirmed'
+    if (activeClaim?.status === 'sent' || activeClaim?.txHash) return 'sent'
     if (allocation?.existingClaim) return 'claimed'
     if (allocation?.eligible) return 'eligible'
     if (walletAddress && allocation && !allocation.eligible) return 'ineligible'
     if (walletAddress) return 'checking'
     return 'connect'
-  }, [allocation, claim, walletAddress])
+  }, [activeClaim, allocation, walletAddress])
 
   useEffect(() => {
     api<ConfigResponse>('/api/claim/config')
@@ -194,8 +195,8 @@ export function App() {
         <dl class="grid min-w-0 gap-3 sm:grid-cols-2">
           <Metric label="Solana wallet" value={shorten(walletAddress || allocation?.solanaAddress)} />
           <Metric label="$BORO allocation" value={allocationAmount(allocation)} />
-          <Metric label="Claim status" value={claim?.status ?? status} />
-          <Metric label="Transaction" value={claim?.txHash ? shorten(claim.txHash, 10, 8) : '...'} />
+          <Metric label="Claim status" value={activeClaim?.status ?? status} />
+          <Metric label="Transaction" value={activeClaim?.txHash ? shorten(activeClaim.txHash, 10, 8) : '...'} />
         </dl>
 
         <label class="grid min-w-0 gap-2 text-sm font-medium">
@@ -216,12 +217,12 @@ export function App() {
           onClick={claimToRecipient}
           type="button"
         >
-          {busy === 'challenge' ? 'Signing $BORO claim' : 'Claim $BORO to address'}
+          {claimButtonLabel(activeClaim, busy === 'challenge')}
         </button>
 
-        {claim?.evmRecipient && (
+        {activeClaim?.evmRecipient && (
           <div class="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
-            <Metric label="Recipient" value={shorten(claim.evmRecipient, 8, 8)} />
+            <Metric label="Recipient" value={shorten(activeClaim.evmRecipient, 8, 8)} />
           </div>
         )}
 
@@ -241,6 +242,14 @@ function allocationAmount(allocation: AllocationResponse | null): string {
   if (!allocation) return '...'
   if (!allocation.eligible) return formatBoroAllocation('0')
   return allocation.claimAmountRaw ? formatBoroAllocation(allocation.claimAmountRaw) : '...'
+}
+
+function claimButtonLabel(claim: ClaimRecord | null, signing: boolean) {
+  if (signing) return 'Signing $BORO claim'
+  if (claim?.status === 'failed') return 'Claim needs admin retry'
+  if (claim?.status === 'pending') return 'Claim is pending'
+  if (claim?.status === 'sent' || claim?.status === 'confirmed' || claim?.txHash) return 'Claim already sent'
+  return 'Claim $BORO to address'
 }
 
 function StatusPill({ status }: { status: string }) {
