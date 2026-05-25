@@ -81,6 +81,26 @@ Future implementations must preserve the existing storage layout:
 Append new storage after the current fields. Do not reorder, remove, rename
 with different types, or insert fields before existing variables.
 
+## Unsupported assets
+
+The lock contract supports only the configured BORO ERC20 token address. Do not
+add a generic "lock any token" path around this contract.
+
+ETH is intentionally unsupported. Empty-calldata ETH transfers revert through
+`receive()`, unknown calldata reverts through `fallback()`, and value-bearing
+`lock(amount)` calls revert before any position accounting or token accounting
+can persist.
+
+A standard ERC20 recipient cannot prevent someone from directly calling a
+different token contract's `transfer(lockAddress, amount)`, because ERC20 has no
+recipient hook. Those direct non-BORO transfers are not counted by
+`totalLocked`, `lockedAmountOf`, or any position data, and the lock contract has
+no callback surface for ERC721, ERC1155, or ERC777 tokens.
+
+No rescue or sweep function is included. This keeps the lock free of owner/admin
+powers over tokens at the lock address, but it also means accidentally
+transferred unsupported ERC20s cannot be recovered from this contract.
+
 ## Required env
 
 Create a local `.env` file or use deployment secrets. Do not put real private
