@@ -1,10 +1,9 @@
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BaseSepoliaTokenSender, getMissingRuntimeEnv } from './claim/chainSender.ts'
-import { MemoryClaimStore } from './claim/memoryStore.ts'
-import { PostgresClaimStore } from './claim/postgresStore.ts'
+import { createClaimStore, getClaimRuntimeReady } from './claim/runtime.ts'
 import { ClaimError, createClaimService } from './claim/service.ts'
-import type { ClaimStore, TokenSender } from './claim/types.ts'
+import type { TokenSender } from './claim/types.ts'
 
 class RateLimiter {
   private readonly hits = new Map<string, number[]>()
@@ -31,9 +30,8 @@ class RateLimiter {
 
 const port = Number(Bun.env.PORT ?? 3000)
 const missingRuntimeEnv = getMissingRuntimeEnv(Bun.env)
-const allowInMemoryClaims = Bun.env.ALLOW_IN_MEMORY_CLAIMS === 'true'
-const runtimeReady = missingRuntimeEnv.length === 0 || (allowInMemoryClaims && missingRuntimeEnv.length === 1 && missingRuntimeEnv[0] === 'DATABASE_URL')
-const store = await createStore()
+const runtimeReady = getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
+const store = await createClaimStore(Bun.env)
 const sender = createSender()
 const service = createClaimService({
   store,
@@ -132,18 +130,6 @@ async function handleClaimApi(request: Request, url: URL) {
   }
 
   return json({ error: 'not_found', message: 'API route not found.' }, 404)
-}
-
-async function createStore(): Promise<ClaimStore> {
-  if (Bun.env.DATABASE_URL) {
-    return new PostgresClaimStore(Bun.env.DATABASE_URL)
-  }
-
-  if (allowInMemoryClaims || Bun.env.NODE_ENV !== 'production') {
-    return new MemoryClaimStore()
-  }
-
-  return new MemoryClaimStore()
 }
 
 function createSender(): TokenSender {

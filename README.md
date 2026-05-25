@@ -50,6 +50,13 @@ Required runtime environment:
 - `BASE_SEPOLIA_AIRDROP_PRIVATE_KEY`
 - `TESTCOIN_CLAIM_POOL_RAW`
 
+Production claim persistence requires Postgres. `NODE_ENV=production` fails startup
+when `DATABASE_URL` is missing, and `ALLOW_IN_MEMORY_CLAIMS=true` is rejected in
+production even when other claim env is present. For local development or tests
+that intentionally do not use Postgres, set `ALLOW_IN_MEMORY_CLAIMS=true`
+with `NODE_ENV` unset, `development`, or `test`; without that explicit opt-in,
+the backend refuses to create an in-memory claim store.
+
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 
 Private keys must only be supplied through deployment secrets. They must not be committed, exposed to the frontend, or logged.
