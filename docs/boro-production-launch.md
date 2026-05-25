@@ -8,8 +8,14 @@ secrets, never in tickets, logs, PRs, or repo files.
 ## Current launch state
 
 - Token: BOROTOKEN (`BORO`) on Base mainnet, chain id `8453`.
+- Token proxy address:
+  `0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c`.
+- Token implementation address:
+  `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324`.
 - Initial supply: `1,000,000,000 BORO` minted once during token proxy
   initialization.
+- Token deployer, initial recipient, and current owner/upgrade admin:
+  `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`.
 - Distribution wallet: `0xD991e2C2C7B2546e019192526100a148E087B7DC`.
 - Final lock upgrade/admin authority target:
   `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`.
@@ -60,15 +66,43 @@ final.
 
 Token deployment:
 
-- token implementation address
-- token proxy address
-- deployer
-- owner/upgrade admin
-- initial recipient
-- deployment tx hashes
-- block number
+- token implementation address:
+  `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324`
+- token proxy address: `0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c`
+- deployer: `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`
+- owner/upgrade admin: `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`
+- initial recipient: `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`
+- implementation deployment tx:
+  `0x2eb290547af3885cf0e1c6084124d5f37dd9efcd5e7a8b1bd9025412ac0088e0`
+- proxy deployment tx:
+  `0xdb9774a611fa4e39c0987091bbb481a782684a999a1c0e2b12a6b99c5be570df`
+- block number: `46478159`
 - chain id `8453`
-- Basescan verification URLs, if verified
+- Basescan verification status:
+  - implementation:
+    `https://basescan.org/address/0xC92736b9fEF54ECfe2A8B70Fc237793515D88324#code`
+    currently reports `Contract: Unverified`.
+  - proxy:
+    `https://basescan.org/address/0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c#code`
+    currently reports `Contract: Unverified`.
+  - proxy implementation relation: the ERC1967 implementation slot on the proxy
+    resolves to `0xC92736b9fEF54ECfe2A8B70Fc237793515D88324`, but BaseScan
+    has not linked the proxy UI yet because BaseScan source/proxy verification is
+    pending.
+  - current blocker: unattended verification has no `ETHERSCAN_API_KEY` /
+    `BASESCAN_API_KEY` available, and BaseScan manual verification forms require
+    reCAPTCHA. Public RPC bytecode checks confirm the deployed implementation and
+    proxy bytecode exactly match the repo artifacts compiled from `main` with
+    Solidity `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs.
+  - manual implementation verification parameters:
+    `contracts/src/BoroToken.sol:BoroToken`, no constructor arguments,
+    Solidity `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs, MIT
+    license.
+  - manual proxy verification parameters:
+    `contracts/src/ERC1967Proxy.sol:ERC1967Proxy`, Solidity
+    `v0.8.24+commit.e11b9ed9`, optimizer enabled, `200` runs, MIT license,
+    constructor arguments:
+    `000000000000000000000000c92736b9fef54ecfe2a8b70fc237793515d8832400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000044485cc95500000000000000000000000075dbd3d9d83bac30982627dcbf3c0b46ce001ea200000000000000000000000075dbd3d9d83bac30982627dcbf3c0b46ce001ea200000000000000000000000000000000000000000000000000000000`.
 
 Lock deployment and handoff:
 
