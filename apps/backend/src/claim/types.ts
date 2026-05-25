@@ -1,7 +1,37 @@
 export const SNAPSHOT_ID = 'bdtch-2026-05-22-helius-421437667'
 export const DOMAIN = 'Borodutch Tools'
-export const PURPOSE = 'Base Sepolia $testcoin claim'
+export const PURPOSE = 'Base mainnet $BORO claim'
+export const BASE_MAINNET_CHAIN_ID = 8453
 export const BASE_SEPOLIA_CHAIN_ID = 84532
+
+export type ClaimNetworkId = 'base-mainnet-boro' | 'base-sepolia-testcoin'
+
+export type ClaimRuntimeConfig = {
+  networkId: ClaimNetworkId
+  networkName: string
+  chainId: number
+  purpose: string
+  tokenSymbol: string
+  poolEnvName: string
+}
+
+export const BORO_MAINNET_CLAIM_CONFIG: ClaimRuntimeConfig = {
+  networkId: 'base-mainnet-boro',
+  networkName: 'Base mainnet',
+  chainId: BASE_MAINNET_CHAIN_ID,
+  purpose: PURPOSE,
+  tokenSymbol: '$BORO',
+  poolEnvName: 'BORO_CLAIM_POOL_RAW',
+}
+
+export const LEGACY_TESTNET_CLAIM_CONFIG: ClaimRuntimeConfig = {
+  networkId: 'base-sepolia-testcoin',
+  networkName: 'Base Sepolia',
+  chainId: BASE_SEPOLIA_CHAIN_ID,
+  purpose: 'Base Sepolia $testcoin claim',
+  tokenSymbol: '$testcoin',
+  poolEnvName: 'TESTCOIN_CLAIM_POOL_RAW',
+}
 
 export type SnapshotMetadata = {
   id: string
@@ -86,7 +116,7 @@ export type TransferRecoveryState = {
 }
 
 export type TokenSender = {
-  sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }): Promise<string>
+  sendToken(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }): Promise<string>
   getTransferRecoveryState(input: {
     recipient: string
     amountRaw: bigint

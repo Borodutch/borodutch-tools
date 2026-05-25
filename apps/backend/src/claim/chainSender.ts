@@ -1,7 +1,15 @@
-import { createPublicClient, createWalletClient, http, parseAbi } from 'viem'
+import { createPublicClient, createWalletClient, http, parseAbi, type Chain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { baseSepolia } from 'viem/chains'
-import { BASE_SEPOLIA_CHAIN_ID, type TokenSender, type TransferRecoveryState } from './types.ts'
+import { base, baseSepolia } from 'viem/chains'
+import { parsePositiveRawAmount } from './math.ts'
+import {
+  BORO_MAINNET_CLAIM_CONFIG,
+  LEGACY_TESTNET_CLAIM_CONFIG,
+  type ClaimNetworkId,
+  type ClaimRuntimeConfig,
+  type TokenSender,
+  type TransferRecoveryState,
+} from './types.ts'
 import { normalizeEvmAddress } from './validation.ts'
 
 const erc20Abi = parseAbi([
@@ -9,15 +17,56 @@ const erc20Abi = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
 ])
 
+type RuntimeEnv = Record<string, string | undefined>
+
+type ChainSenderConfig = ClaimRuntimeConfig & {
+  chain: Chain
+  rpcEnvLabel: string
+  tokenAddressEnvName: string
+  privateKeyEnvName: string
+}
+
+const mainnetConfig: ChainSenderConfig = {
+  ...BORO_MAINNET_CLAIM_CONFIG,
+  chain: base,
+  rpcEnvLabel: 'BASE_MAINNET_RPC_URL',
+  tokenAddressEnvName: 'BASE_MAINNET_BORO_ADDRESS',
+  privateKeyEnvName: 'BORO_CLAIM_SENDER_PRIVATE_KEY',
+}
+
+const legacyTestnetConfig: ChainSenderConfig = {
+  ...LEGACY_TESTNET_CLAIM_CONFIG,
+  chain: baseSepolia,
+  rpcEnvLabel: 'BASE_SEPOLIA_RPC_URL or ALCHEMY_BASE_SEPOLIA_API_KEY',
+  tokenAddressEnvName: 'BASE_SEPOLIA_TESTCOIN_ADDRESS',
+  privateKeyEnvName: 'BASE_SEPOLIA_AIRDROP_PRIVATE_KEY',
+}
+
+export class BaseMainnetBoroTokenSender implements TokenSender {
+  private readonly sender: IdempotentSerializedTokenSender
+
+  constructor(env: RuntimeEnv) {
+    this.sender = new IdempotentSerializedTokenSender(new ConfiguredTokenTransferSender(env, mainnetConfig))
+  }
+
+  sendToken(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
+    return this.sender.sendToken(input)
+  }
+
+  getTransferRecoveryState(input: { recipient: string; amountRaw: bigint; txHash: string | null }) {
+    return this.sender.getTransferRecoveryState(input)
+  }
+}
+
 export class BaseSepoliaTokenSender implements TokenSender {
   private readonly sender: IdempotentSerializedTokenSender
 
-  constructor(env: Record<string, string | undefined>) {
-    this.sender = new IdempotentSerializedTokenSender(new BaseSepoliaTokenTransferSender(env))
+  constructor(env: RuntimeEnv) {
+    this.sender = new IdempotentSerializedTokenSender(new ConfiguredTokenTransferSender(env, legacyTestnetConfig))
   }
 
-  sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
-    return this.sender.sendTestcoin(input)
+  sendToken(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
+    return this.sender.sendToken(input)
   }
 
   getTransferRecoveryState(input: { recipient: string; amountRaw: bigint; txHash: string | null }) {
@@ -31,7 +80,7 @@ export class IdempotentSerializedTokenSender implements TokenSender {
 
   constructor(private readonly delegate: TokenSender) {}
 
-  sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
+  sendToken(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
     const idempotencyKey = input.idempotencyKey.trim()
 
     if (!idempotencyKey) {
@@ -51,7 +100,7 @@ export class IdempotentSerializedTokenSender implements TokenSender {
     }
 
     const promise = this.enqueue(() =>
-      this.delegate.sendTestcoin({
+      this.delegate.sendToken({
         ...input,
         recipient,
         idempotencyKey,
@@ -82,46 +131,49 @@ export class IdempotentSerializedTokenSender implements TokenSender {
   }
 }
 
-class BaseSepoliaTokenTransferSender implements TokenSender {
+class ConfiguredTokenTransferSender implements TokenSender {
   private readonly rpcUrl: string
   private readonly tokenAddress: `0x${string}`
   private readonly privateKey: `0x${string}`
 
-  constructor(env: Record<string, string | undefined>) {
-    const rpcUrl = resolveRpcUrl(env)
+  constructor(
+    env: RuntimeEnv,
+    private readonly config: ChainSenderConfig,
+  ) {
+    const rpcUrl = resolveRpcUrl(env, config.networkId)
 
     if (!rpcUrl) {
-      throw new Error('missing BASE_SEPOLIA_RPC_URL or ALCHEMY_BASE_SEPOLIA_API_KEY')
+      throw new Error(`missing ${config.rpcEnvLabel}`)
     }
 
-    if (!env.BASE_SEPOLIA_TESTCOIN_ADDRESS) {
-      throw new Error('missing BASE_SEPOLIA_TESTCOIN_ADDRESS')
+    if (!env[config.tokenAddressEnvName]) {
+      throw new Error(`missing ${config.tokenAddressEnvName}`)
     }
 
-    if (!env.BASE_SEPOLIA_AIRDROP_PRIVATE_KEY) {
-      throw new Error('missing BASE_SEPOLIA_AIRDROP_PRIVATE_KEY')
+    if (!env[config.privateKeyEnvName]) {
+      throw new Error(`missing ${config.privateKeyEnvName}`)
     }
 
     this.rpcUrl = rpcUrl
-    this.tokenAddress = normalizeEvmAddress(env.BASE_SEPOLIA_TESTCOIN_ADDRESS) as `0x${string}`
-    this.privateKey = normalizePrivateKey(env.BASE_SEPOLIA_AIRDROP_PRIVATE_KEY)
+    this.tokenAddress = normalizeEvmAddress(env[config.tokenAddressEnvName]) as `0x${string}`
+    this.privateKey = normalizePrivateKey(env[config.privateKeyEnvName], config.privateKeyEnvName)
   }
 
-  async sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
+  async sendToken(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }) {
     const account = privateKeyToAccount(this.privateKey)
     const publicClient = createPublicClient({
-      chain: baseSepolia,
+      chain: this.config.chain,
       transport: http(this.rpcUrl),
     })
     const walletClient = createWalletClient({
       account,
-      chain: baseSepolia,
+      chain: this.config.chain,
       transport: http(this.rpcUrl),
     })
     const chainId = await publicClient.getChainId()
 
-    if (chainId !== BASE_SEPOLIA_CHAIN_ID) {
-      throw new Error('base sepolia rpc returned unexpected chain id')
+    if (chainId !== this.config.chainId) {
+      throw new Error(`${this.config.networkName} RPC returned unexpected chain id`)
     }
 
     const recipient = normalizeEvmAddress(input.recipient) as `0x${string}`
@@ -134,19 +186,19 @@ class BaseSepoliaTokenTransferSender implements TokenSender {
     })
 
     if (simulation.result !== true) {
-      throw new Error('testcoin transfer simulation returned false')
+      throw new Error(`${this.config.tokenSymbol} transfer simulation returned false`)
     }
 
     const txHash = await walletClient.writeContract(simulation.request)
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash }).catch((error) => {
       throw new TokenTransferFailedError(
-        error instanceof Error ? error.message : 'testcoin transfer transaction was not confirmed',
+        error instanceof Error ? error.message : `${this.config.tokenSymbol} transfer transaction was not confirmed`,
         txHash,
       )
     })
 
     if (receipt.status !== 'success') {
-      throw new TokenTransferFailedError('testcoin transfer transaction reverted', txHash)
+      throw new TokenTransferFailedError(`${this.config.tokenSymbol} transfer transaction reverted`, txHash)
     }
 
     return txHash
@@ -158,13 +210,13 @@ class BaseSepoliaTokenTransferSender implements TokenSender {
     txHash: string | null
   }): Promise<TransferRecoveryState> {
     const publicClient = createPublicClient({
-      chain: baseSepolia,
+      chain: this.config.chain,
       transport: http(this.rpcUrl),
     })
     const chainId = await publicClient.getChainId()
 
-    if (chainId !== BASE_SEPOLIA_CHAIN_ID) {
-      throw new Error('base sepolia rpc returned unexpected chain id')
+    if (chainId !== this.config.chainId) {
+      throw new Error(`${this.config.networkName} RPC returned unexpected chain id`)
     }
 
     let txStatus: TransferRecoveryState['txStatus'] = 'not_checked'
@@ -206,27 +258,62 @@ class TokenTransferFailedError extends Error {
   }
 }
 
-export function getMissingRuntimeEnv(env: Record<string, string | undefined>) {
+export function getClaimRuntimeConfig(env: RuntimeEnv) {
+  return getClaimNetworkId(env) === 'base-sepolia-testcoin' ? legacyTestnetConfig : mainnetConfig
+}
+
+export function getClaimNetworkId(env: RuntimeEnv): ClaimNetworkId {
+  return getLegacyTestnetClaimsEnabled(env) ? 'base-sepolia-testcoin' : 'base-mainnet-boro'
+}
+
+export function getLegacyTestnetClaimsEnabled(env: RuntimeEnv) {
+  const explicitValue = env.ENABLE_TESTNET_CLAIMS?.trim().toLowerCase()
+
+  if (!explicitValue || !['1', 'true', 'yes', 'on'].includes(explicitValue)) {
+    return false
+  }
+
+  return env.NODE_ENV !== 'production'
+}
+
+export function createClaimTokenSender(env: RuntimeEnv): TokenSender {
+  return getClaimNetworkId(env) === 'base-sepolia-testcoin'
+    ? new BaseSepoliaTokenSender(env)
+    : new BaseMainnetBoroTokenSender(env)
+}
+
+export function getMissingRuntimeEnv(env: RuntimeEnv) {
+  const config = getClaimRuntimeConfig(env)
   const missing: string[] = []
 
   if (!env.DATABASE_URL) {
     missing.push('DATABASE_URL')
   }
 
-  if (!resolveRpcUrl(env)) {
-    missing.push('BASE_SEPOLIA_RPC_URL or ALCHEMY_BASE_SEPOLIA_API_KEY')
+  if (!resolveRpcUrl(env, config.networkId)) {
+    missing.push(config.rpcEnvLabel)
   }
 
-  for (const name of ['BASE_SEPOLIA_TESTCOIN_ADDRESS', 'BASE_SEPOLIA_AIRDROP_PRIVATE_KEY', 'TESTCOIN_CLAIM_POOL_RAW']) {
-    if (!env[name]) {
-      missing.push(name)
-    }
+  if (!isValidAddressValue(env[config.tokenAddressEnvName])) {
+    missing.push(config.tokenAddressEnvName)
+  }
+
+  if (!isValidPrivateKeyValue(env[config.privateKeyEnvName])) {
+    missing.push(config.privateKeyEnvName)
+  }
+
+  if (!isValidPositiveRawAmount(env[config.poolEnvName], config.poolEnvName)) {
+    missing.push(config.poolEnvName)
   }
 
   return missing
 }
 
-function resolveRpcUrl(env: Record<string, string | undefined>) {
+function resolveRpcUrl(env: RuntimeEnv, networkId: ClaimNetworkId) {
+  if (networkId === 'base-mainnet-boro') {
+    return env.BASE_MAINNET_RPC_URL
+  }
+
   if (env.BASE_SEPOLIA_RPC_URL) {
     return env.BASE_SEPOLIA_RPC_URL
   }
@@ -238,11 +325,42 @@ function resolveRpcUrl(env: Record<string, string | undefined>) {
   return undefined
 }
 
-function normalizePrivateKey(value: string): `0x${string}` {
-  const privateKey = value.startsWith('0x') ? value : `0x${value}`
+function isValidAddressValue(value: string | undefined) {
+  if (!value) return false
+
+  try {
+    normalizeEvmAddress(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isValidPrivateKeyValue(value: string | undefined) {
+  if (!value) return false
+
+  try {
+    normalizePrivateKey(value, 'private key')
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isValidPositiveRawAmount(value: string | undefined, envName: string) {
+  try {
+    parsePositiveRawAmount(value, envName)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function normalizePrivateKey(value: string | undefined, envName: string): `0x${string}` {
+  const privateKey = value?.startsWith('0x') ? value : `0x${value ?? ''}`
 
   if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
-    throw new Error('invalid BASE_SEPOLIA_AIRDROP_PRIVATE_KEY')
+    throw new Error(`invalid ${envName}`)
   }
 
   return privateKey as `0x${string}`

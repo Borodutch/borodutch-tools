@@ -1,28 +1,27 @@
 import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BaseSepoliaTokenSender, getMissingRuntimeEnv } from './claim/chainSender.ts'
-import { createClaimStore, getClaimRuntimeReady, getTestnetClaimsEnabled } from './claim/runtime.ts'
+import { createClaimTokenSender, getClaimRuntimeConfig, getMissingRuntimeEnv } from './claim/chainSender.ts'
+import { createClaimStore, getClaimRuntimeReady } from './claim/runtime.ts'
 import { ClaimError, createClaimService } from './claim/service.ts'
+import { snapshotMetadata } from './claim/snapshot.ts'
 import type { TokenSender } from './claim/types.ts'
 import { RateLimiter, claimRateLimitKey } from './rateLimit.ts'
 
 const port = Number(Bun.env.PORT ?? 3000)
-const testnetClaimsEnabled = getTestnetClaimsEnabled(Bun.env)
-const missingRuntimeEnv = testnetClaimsEnabled ? getMissingRuntimeEnv(Bun.env) : []
+const claimConfig = getClaimRuntimeConfig(Bun.env)
+const missingRuntimeEnv = getMissingRuntimeEnv(Bun.env)
 const trustProxyHeaders = Bun.env.TRUST_PROXY_HEADERS === 'true'
-const runtimeReady = testnetClaimsEnabled && getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
-const store = testnetClaimsEnabled ? await createClaimStore(Bun.env) : null
-const sender = testnetClaimsEnabled ? createSender() : null
+const runtimeReady = getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
+const store = runtimeReady ? await createClaimStore(Bun.env) : null
+const sender = runtimeReady ? createSender() : null
 const service =
   store && sender
     ? createClaimService({
         store,
         sender,
-        env: {
-          ...Bun.env,
-          TESTCOIN_CLAIM_POOL_RAW: Bun.env.TESTCOIN_CLAIM_POOL_RAW ?? '1',
-        },
+        env: Bun.env,
+        claimConfig,
       })
     : null
 const limiter = new RateLimiter(60, 60_000)
@@ -77,24 +76,15 @@ console.log(`Borodutch Tools backend listening on :${port}`)
 
 async function handleClaimApi(request: Request, url: URL) {
   if (request.method === 'GET' && url.pathname === '/api/claim/config') {
-    if (!testnetClaimsEnabled) {
-      return json({
-        app: 'Borodutch Tools',
-        purpose: 'Base Sepolia $testcoin claim',
-        enabled: false,
-        disabledReason: 'Base Sepolia testnet claims are disabled in this deployment.',
-        missingRuntimeEnv: [],
-      })
-    }
-
-    return json(getClaimService().getConfig(runtimeReady ? [] : missingRuntimeEnv))
+    return json(service ? service.getConfig([]) : getDisabledClaimConfig())
   }
 
-  if (!testnetClaimsEnabled) {
+  if (!runtimeReady) {
     return json(
       {
         error: 'claim_api_disabled',
-        message: 'Base Sepolia testnet claim API is disabled in this deployment.',
+        message: `${claimConfig.purpose} API is disabled in this deployment.`,
+        missingRuntimeEnv,
       },
       410,
     )
@@ -156,16 +146,30 @@ async function handleClaimApi(request: Request, url: URL) {
 
 function createSender(): TokenSender {
   try {
-    return new BaseSepoliaTokenSender(Bun.env)
+    return createClaimTokenSender(Bun.env)
   } catch {
     return {
-      async sendTestcoin() {
-        throw new Error('Base Sepolia sender is not configured')
+      async sendToken() {
+        throw new Error(`${claimConfig.networkName} sender is not configured`)
       },
       async getTransferRecoveryState() {
-        throw new Error('Base Sepolia sender is not configured')
+        throw new Error(`${claimConfig.networkName} sender is not configured`)
       },
     }
+  }
+}
+
+function getDisabledClaimConfig() {
+  return {
+    app: 'Borodutch Tools',
+    purpose: claimConfig.purpose,
+    enabled: false,
+    disabledReason: `${claimConfig.networkName} ${claimConfig.tokenSymbol} claims are disabled until runtime environment is complete.`,
+    network: claimConfig.networkName,
+    tokenSymbol: claimConfig.tokenSymbol,
+    chainId: claimConfig.chainId,
+    snapshot: snapshotMetadata,
+    missingRuntimeEnv,
   }
 }
 
