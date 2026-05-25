@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { calculateClaimAmountRaw } from '../src/claim/math.ts'
 import { buildAllocationCheckMessage, buildClaimMessage } from '../src/claim/message.ts'
 import { MemoryClaimStore } from '../src/claim/memoryStore.ts'
-import { createClaimStore, getClaimRuntimeReady } from '../src/claim/runtime.ts'
+import { createClaimStore, getClaimRuntimeReady, getTestnetClaimsEnabled } from '../src/claim/runtime.ts'
 import { verifySolanaSignature } from '../src/claim/signature.ts'
 import { ClaimService } from '../src/claim/service.ts'
 import { snapshotMetadata } from '../src/claim/snapshot.ts'
@@ -399,6 +399,20 @@ describe('claim service', () => {
 })
 
 describe('claim runtime store configuration', () => {
+  it('disables legacy testnet claims by default in production', () => {
+    expect(getTestnetClaimsEnabled({ NODE_ENV: 'production' })).toBe(false)
+  })
+
+  it('allows production deployments to explicitly opt in to legacy testnet claims', () => {
+    expect(getTestnetClaimsEnabled({ NODE_ENV: 'production', ENABLE_TESTNET_CLAIMS: 'true' })).toBe(true)
+    expect(getTestnetClaimsEnabled({ NODE_ENV: 'production', ENABLE_TESTNET_CLAIMS: 'false' })).toBe(false)
+  })
+
+  it('keeps legacy testnet claims enabled outside production by default', () => {
+    expect(getTestnetClaimsEnabled({ NODE_ENV: 'development' })).toBe(true)
+    expect(getTestnetClaimsEnabled({ NODE_ENV: 'test' })).toBe(true)
+  })
+
   it('fails closed in production when DATABASE_URL is missing', async () => {
     const env = {
       NODE_ENV: 'production',
