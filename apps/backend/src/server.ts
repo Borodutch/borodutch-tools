@@ -135,8 +135,14 @@ async function handleClaimApi(request: Request, url: URL) {
   if (request.method === 'POST' && url.pathname === '/api/claim/admin/retry') {
     ensureRuntimeReady()
     ensureClaimAdminAuthorized(request)
-    const body = (await request.json()) as { claimId: unknown }
-    return json(await service.retryFailedClaim(body.claimId), 202)
+    const body = (await request.json()) as { claimId: unknown; allowMissingTxRetry?: unknown }
+    return json(
+      await service.retryFailedClaim({
+        claimId: body.claimId,
+        allowMissingTxRetry: body.allowMissingTxRetry === true,
+      }),
+      202,
+    )
   }
 
   return json({ error: 'not_found', message: 'API route not found.' }, 404)
@@ -160,6 +166,9 @@ function createSender(): TokenSender {
   } catch {
     return {
       async sendTestcoin() {
+        throw new Error('Base Sepolia sender is not configured')
+      },
+      async getTransferRecoveryState() {
         throw new Error('Base Sepolia sender is not configured')
       },
     }

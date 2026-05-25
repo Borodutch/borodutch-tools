@@ -238,12 +238,12 @@ export class ClaimService {
     }
   }
 
-  async retryFailedClaim(claimIdInput: unknown) {
-    if (typeof claimIdInput !== 'string' || claimIdInput.length === 0) {
+  async retryFailedClaim(input: { claimId: unknown; allowMissingTxRetry?: boolean }) {
+    if (typeof input.claimId !== 'string' || input.claimId.length === 0) {
       throw new ClaimError('invalid_claim', 'Claim id is required.')
     }
 
-    const existing = await this.store.getClaimById(claimIdInput)
+    const existing = await this.store.getClaimById(input.claimId)
 
     if (!existing) {
       throw new ClaimError('claim_not_found', 'Claim was not found.')
@@ -251,6 +251,38 @@ export class ClaimService {
 
     if (existing.status !== 'failed') {
       throw new ClaimError('claim_retry_not_failed', 'Only failed claims can be retried by an admin.', serializeClaim(existing))
+    }
+
+    const recoveryState = await this.sender.getTransferRecoveryState({
+      recipient: existing.evmRecipient,
+      amountRaw: BigInt(existing.claimAmountRaw),
+      txHash: existing.txHash,
+    })
+
+    if (existing.txHash && recoveryState.txStatus === 'success') {
+      const claim = await this.store.updateClaimSent(existing.id, existing.txHash)
+      return { claim: serializeClaim(claim)!, recovered: true }
+    }
+
+    if (recoveryState.recipientBalanceCoversAmount) {
+      const claim = await this.store.updateClaimConfirmed(existing.id, existing.txHash)
+      return { claim: serializeClaim(claim)!, recovered: true }
+    }
+
+    if (recoveryState.txStatus === 'pending') {
+      throw new ClaimError(
+        'claim_retry_tx_unconfirmed',
+        'The recorded transfer transaction is still pending. Retry is blocked to avoid a duplicate send.',
+        { claim: serializeClaim(existing), recoveryState },
+      )
+    }
+
+    if (recoveryState.txStatus === 'not_found' && !input.allowMissingTxRetry) {
+      throw new ClaimError(
+        'claim_retry_tx_unconfirmed',
+        'The recorded transfer transaction was not found. Retry requires allowMissingTxRetry after admin verification.',
+        { claim: serializeClaim(existing), recoveryState },
+      )
     }
 
     const claimToRetry = await this.store.prepareClaimRetry(existing.id)

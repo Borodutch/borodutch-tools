@@ -52,7 +52,7 @@ Required runtime environment:
 
 Optional admin retry environment:
 
-- `CLAIM_ADMIN_TOKEN` enables `POST /api/claim/admin/retry` with a bearer token or `x-admin-token` header. The body is `{ "claimId": "<claim-id>" }`. Only claims currently marked `failed` are retried, and the backend moves the claim back to `pending` before broadcasting so concurrent retries do not send duplicates.
+- `CLAIM_ADMIN_TOKEN` enables `POST /api/claim/admin/retry` with a bearer token or `x-admin-token` header. The body is `{ "claimId": "<claim-id>" }`, with optional `{ "allowMissingTxRetry": true }` only after an admin verifies a recorded transaction hash is stale or dropped. Only claims currently marked `failed` are retried. Before resending, the backend checks any recorded transaction hash and the recipient token balance; if the prior transfer already succeeded or the recipient balance already covers the claim, it recovers the claim without broadcasting again. Otherwise it moves the claim back to `pending` before broadcasting so concurrent retries do not send duplicates.
 
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 

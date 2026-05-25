@@ -1,10 +1,13 @@
 import { createPublicClient, createWalletClient, http, parseAbi } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia } from 'viem/chains'
-import { BASE_SEPOLIA_CHAIN_ID, type TokenSender } from './types.ts'
+import { BASE_SEPOLIA_CHAIN_ID, type TokenSender, type TransferRecoveryState } from './types.ts'
 import { normalizeEvmAddress } from './validation.ts'
 
-const erc20Abi = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
+const erc20Abi = parseAbi([
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function balanceOf(address account) view returns (uint256)',
+])
 
 export class BaseSepoliaTokenSender implements TokenSender {
   private readonly rpcUrl: string
@@ -70,6 +73,50 @@ export class BaseSepoliaTokenSender implements TokenSender {
 
     return txHash
   }
+
+  async getTransferRecoveryState(input: {
+    recipient: string
+    amountRaw: bigint
+    txHash: string | null
+  }): Promise<TransferRecoveryState> {
+    const publicClient = createPublicClient({
+      chain: baseSepolia,
+      transport: http(this.rpcUrl),
+    })
+    const chainId = await publicClient.getChainId()
+
+    if (chainId !== BASE_SEPOLIA_CHAIN_ID) {
+      throw new Error('base sepolia rpc returned unexpected chain id')
+    }
+
+    let txStatus: TransferRecoveryState['txStatus'] = 'not_checked'
+
+    if (input.txHash) {
+      try {
+        const receipt = await publicClient.getTransactionReceipt({ hash: input.txHash as `0x${string}` })
+        txStatus = receipt.status === 'success' ? 'success' : 'reverted'
+      } catch {
+        try {
+          await publicClient.getTransaction({ hash: input.txHash as `0x${string}` })
+          txStatus = 'pending'
+        } catch {
+          txStatus = 'not_found'
+        }
+      }
+    }
+
+    const recipientBalance = await publicClient.readContract({
+      address: this.tokenAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [normalizeEvmAddress(input.recipient) as `0x${string}`],
+    })
+
+    return {
+      txStatus,
+      recipientBalanceCoversAmount: recipientBalance >= input.amountRaw,
+    }
+  }
 }
 
 class TokenTransferFailedError extends Error {
@@ -80,6 +127,7 @@ class TokenTransferFailedError extends Error {
     super(message)
   }
 }
+
 
 export function getMissingRuntimeEnv(env: Record<string, string | undefined>) {
   const missing: string[] = []

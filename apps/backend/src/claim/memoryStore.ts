@@ -94,6 +94,18 @@ export class MemoryClaimStore implements ClaimStore {
     return updated
   }
 
+  async updateClaimConfirmed(id: string, txHash: string | null) {
+    const claim = this.claims.get(id)
+
+    if (!claim) {
+      throw new Error('claim not found')
+    }
+
+    const updated = { ...claim, txHash, status: 'confirmed' as const, errorCode: null, updatedAt: new Date() }
+    this.claims.set(id, updated)
+    return updated
+  }
+
   async updateClaimFailed(id: string, errorCode: string, txHash?: string) {
     const claim = this.claims.get(id)
 

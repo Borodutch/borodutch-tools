@@ -58,6 +58,7 @@ export function App() {
 
   const status = useMemo(() => {
     if (claim?.status === 'failed') return 'failed'
+    if (claim?.status === 'confirmed') return 'confirmed'
     if (claim?.status === 'sent' || claim?.txHash) return 'sent'
     if (allocation?.existingClaim) return 'claimed'
     if (allocation?.eligible) return 'eligible'
@@ -236,7 +237,7 @@ function allocationAmount(allocation: AllocationResponse | null): string {
 
 function StatusPill({ status }: { status: string }) {
   const tone =
-    status === 'sent' || status === 'eligible'
+    status === 'sent' || status === 'confirmed' || status === 'eligible'
       ? 'bg-emerald-100 text-emerald-800'
       : status === 'failed'
         ? 'bg-red-100 text-red-800'

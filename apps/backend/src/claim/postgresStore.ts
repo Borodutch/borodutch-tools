@@ -255,6 +255,22 @@ export class PostgresClaimStore implements ClaimStore {
     return claimFromRow(result.rows[0])
   }
 
+  async updateClaimConfirmed(id: string, txHash: string | null) {
+    const result = await this.pool.query<ClaimRow>(
+      `UPDATE claims
+       SET status = 'confirmed', tx_hash = $2, error_code = NULL, updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [id, txHash],
+    )
+
+    if (!result.rows[0]) {
+      throw new Error('claim not found')
+    }
+
+    return claimFromRow(result.rows[0])
+  }
+
   async updateClaimFailed(id: string, errorCode: string, txHash?: string) {
     const result = await this.pool.query<ClaimRow>(
       `UPDATE claims
