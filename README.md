@@ -26,8 +26,9 @@ The contracts package also includes the Base mainnet $BORO Merkle distributor.
 ## Base mainnet $BORO
 
 The repo includes an upgradeable Base mainnet BOROTOKEN (`BORO`) contract,
-deployment script, treasury-transfer script, and operator runbook. See
-`docs/boro-mainnet-token.md`.
+deployment script, treasury-transfer script, an upgradeable BORO one-year lock,
+and operator runbooks. See `docs/boro-mainnet-token.md` and
+`docs/boro-locking-contract.md`.
 
 Required deployment env:
 
@@ -38,6 +39,8 @@ Required deployment env:
 - `BORO_PROXY_ADDRESS`, `BORO_TREASURY_ADDRESS`, and
   `BORO_TREASURY_TRANSFER_AMOUNT_RAW` when transferring to treasury after
   deployment
+- `BORO_TOKEN_ADDRESS`, and optionally `BORO_LOCK_OWNER` and
+  `BORO_LOCK_DURATION_SECONDS` when deploying the BORO lock
 
 Use only local ignored `.env` files or deployment secret managers for private
 keys. Verify `.env` is ignored before adding real secrets:
@@ -117,3 +120,7 @@ Configure it with `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS` and
 Base mainnet `$BORO` treasury claim distribution is designed as an on-chain
 Merkle distributor. Deployment and operator notes live in
 `docs/boro-merkle-distributor.md`.
+
+Base mainnet `$BORO` locking uses an upgradeable one-year position contract.
+Deployment, trust model, storage layout, and metadata notes live in
+`docs/boro-locking-contract.md`.
