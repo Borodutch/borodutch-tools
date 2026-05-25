@@ -70,6 +70,7 @@ contract TestcoinOneYearLock is ReentrancyGuardLite {
     event Withdrawn(address indexed owner, uint256 indexed positionId, uint256 amount);
 
     error InvalidToken();
+    error UnsupportedAsset();
     error ZeroAmount();
     error UnknownPosition();
     error NotPositionOwner();
@@ -81,7 +82,16 @@ contract TestcoinOneYearLock is ReentrancyGuardLite {
         token = token_;
     }
 
-    function lock(uint256 amount) external nonReentrant returns (uint256 positionId) {
+    receive() external payable {
+        revert UnsupportedAsset();
+    }
+
+    fallback() external payable {
+        revert UnsupportedAsset();
+    }
+
+    function lock(uint256 amount) external payable nonReentrant returns (uint256 positionId) {
+        if (msg.value != 0) revert UnsupportedAsset();
         if (amount == 0) revert ZeroAmount();
 
         uint256 lockedAt = block.timestamp;

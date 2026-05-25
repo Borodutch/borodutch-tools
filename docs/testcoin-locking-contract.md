@@ -9,7 +9,10 @@ cliff.
 - `token` is immutable and set in the constructor.
 - `lock(amount)` rejects zero amounts, records a new position, updates active
   totals, and then transfers `$testcoin` from the caller with a SafeERC20-style
-  optional-return wrapper.
+  optional-return wrapper. It has no token address parameter, so the only
+  supported lock path pulls the constructor-configured token.
+- Plain ETH sends and calls to `lock(amount)` with `msg.value` revert with
+  `UnsupportedAsset`; the contract does not attempt automatic refunds.
 - `withdraw(positionId)` is owner-only, rejects early or repeated withdrawals,
   updates state before transferring tokens back, and uses a reentrancy guard.
 - `withdrawMatured()` lets a user withdraw all of their currently matured active
@@ -26,6 +29,26 @@ maturity changes as time passes without a transaction. For the current test-scal
 contract/UI, a paginated read over active positions is acceptable. If this grows
 past small test-scale usage, index `Locked` and `Withdrawn` events in a backend
 or subgraph and compute global reporting off-chain.
+
+## Unsupported assets
+
+The lock contract supports only the configured ERC20 token address. Do not add a
+generic "lock any token" path around this contract.
+
+ETH is intentionally unsupported. Both empty-calldata ETH transfers and
+value-bearing `lock(amount)` calls revert before any position accounting or token
+accounting can persist.
+
+A standard ERC20 recipient cannot prevent someone from directly calling a
+different token contract's `transfer(lockAddress, amount)`, because ERC20 has no
+recipient hook. Those direct non-`$testcoin` transfers are not counted by
+`totalLocked`, `lockedAmountOf`, or any position data, and the lock contract has
+no callback surface for ERC721, ERC1155, or ERC777 tokens.
+
+No rescue or sweep function is included. This keeps the deployed test lock free
+of owner/admin powers over tokens at the lock address, but it also means
+accidentally transferred unsupported ERC20s cannot be recovered from this
+contract.
 
 ## Required env
 
