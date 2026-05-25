@@ -1,28 +1,28 @@
 import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BaseSepoliaTokenSender, getMissingRuntimeEnv } from './claim/chainSender.ts'
-import { createClaimStore, getClaimRuntimeReady, getTestnetClaimsEnabled } from './claim/runtime.ts'
+import { ClaimTokenSender } from './claim/chainSender.ts'
+import { getClaimRuntimeConfig, getInvalidRuntimeEnv, getMissingRuntimeEnv } from './claim/config.ts'
+import { createClaimStore, getClaimRuntimeReady } from './claim/runtime.ts'
 import { ClaimError, createClaimService } from './claim/service.ts'
 import type { TokenSender } from './claim/types.ts'
 import { RateLimiter, claimRateLimitKey } from './rateLimit.ts'
 
 const port = Number(Bun.env.PORT ?? 3000)
-const testnetClaimsEnabled = getTestnetClaimsEnabled(Bun.env)
-const missingRuntimeEnv = testnetClaimsEnabled ? getMissingRuntimeEnv(Bun.env) : []
+const claimRuntimeConfig = getClaimRuntimeConfig(Bun.env)
+const missingRuntimeEnv = getMissingRuntimeEnv(Bun.env, claimRuntimeConfig)
+const invalidRuntimeEnv = getInvalidRuntimeEnv(Bun.env, claimRuntimeConfig)
 const trustProxyHeaders = Bun.env.TRUST_PROXY_HEADERS === 'true'
-const runtimeReady = testnetClaimsEnabled && getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
-const store = testnetClaimsEnabled ? await createClaimStore(Bun.env) : null
-const sender = testnetClaimsEnabled ? createSender() : null
+const runtimeReady = invalidRuntimeEnv.length === 0 && getClaimRuntimeReady(Bun.env, missingRuntimeEnv)
+const store = runtimeReady ? await createClaimStore(Bun.env) : null
+const sender = runtimeReady ? createSender() : null
 const service =
   store && sender
     ? createClaimService({
         store,
         sender,
-        env: {
-          ...Bun.env,
-          TESTCOIN_CLAIM_POOL_RAW: Bun.env.TESTCOIN_CLAIM_POOL_RAW ?? '1',
-        },
+        env: Bun.env,
+        config: claimRuntimeConfig,
       })
     : null
 const limiter = new RateLimiter(60, 60_000)
@@ -77,35 +77,22 @@ console.log(`Borodutch Tools backend listening on :${port}`)
 
 async function handleClaimApi(request: Request, url: URL) {
   if (request.method === 'GET' && url.pathname === '/api/claim/config') {
-    if (!testnetClaimsEnabled) {
-      return json({
-        app: 'Borodutch Tools',
-        purpose: 'Base Sepolia $testcoin claim',
-        enabled: false,
-        disabledReason: 'Base Sepolia testnet claims are disabled in this deployment.',
-        missingRuntimeEnv: [],
-      })
+    if (!runtimeReady) {
+      return json(disabledClaimConfig())
     }
 
-    return json(getClaimService().getConfig(runtimeReady ? [] : missingRuntimeEnv))
+    return json(getClaimService().getConfig([]))
   }
 
-  if (!testnetClaimsEnabled) {
+  if (!runtimeReady) {
     return json(
-      {
-        error: 'claim_api_disabled',
-        message: 'Base Sepolia testnet claim API is disabled in this deployment.',
-      },
-      410,
+      { error: 'runtime_not_configured', message: 'Claim runtime is not configured.', invalidRuntimeEnv, missingRuntimeEnv },
+      503,
     )
   }
 
   if (request.method === 'GET' && url.pathname === '/api/claim/allocation') {
     const solanaAddress = url.searchParams.get('solanaAddress')
-
-    if (!runtimeReady) {
-      return json({ error: 'runtime_not_configured', missingRuntimeEnv }, 503)
-    }
 
     return json(await getClaimService().getAllocation(solanaAddress))
   }
@@ -156,16 +143,30 @@ async function handleClaimApi(request: Request, url: URL) {
 
 function createSender(): TokenSender {
   try {
-    return new BaseSepoliaTokenSender(Bun.env)
+    return new ClaimTokenSender(Bun.env, claimRuntimeConfig)
   } catch {
     return {
-      async sendTestcoin() {
-        throw new Error('Base Sepolia sender is not configured')
+      async sendClaimToken() {
+        throw new Error(`${claimRuntimeConfig.chainName} ${claimRuntimeConfig.tokenSymbol} sender is not configured`)
       },
       async getTransferRecoveryState() {
-        throw new Error('Base Sepolia sender is not configured')
+        throw new Error(`${claimRuntimeConfig.chainName} ${claimRuntimeConfig.tokenSymbol} sender is not configured`)
       },
     }
+  }
+}
+
+function disabledClaimConfig() {
+  return {
+    app: 'Borodutch Tools',
+    purpose: claimRuntimeConfig.purpose,
+    enabled: false,
+    chainId: claimRuntimeConfig.chainId,
+    chainName: claimRuntimeConfig.chainName,
+    tokenSymbol: claimRuntimeConfig.tokenSymbol,
+    disabledReason: claimRuntimeConfig.disabledReason,
+    invalidRuntimeEnv,
+    missingRuntimeEnv,
   }
 }
 
@@ -174,7 +175,7 @@ function ensureRuntimeReady() {
     throw new ClaimError(
       'runtime_not_configured',
       'Claim service is missing required runtime environment.',
-      missingRuntimeEnv,
+      { invalidRuntimeEnv, missingRuntimeEnv },
     )
   }
 }

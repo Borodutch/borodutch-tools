@@ -5,7 +5,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { calculateClaimAmountRaw } from '../src/claim/math.ts'
 import { buildAllocationCheckMessage, buildClaimMessage } from '../src/claim/message.ts'
 import { MemoryClaimStore } from '../src/claim/memoryStore.ts'
-import { createClaimStore, getClaimRuntimeReady, getTestnetClaimsEnabled } from '../src/claim/runtime.ts'
+import {
+  boroMainnetClaimConfig,
+  getClaimRuntimeConfig,
+  getInvalidRuntimeEnv,
+  getMissingRuntimeEnv,
+  getTestnetClaimsEnabled,
+  legacyTestnetClaimConfig,
+} from '../src/claim/config.ts'
+import { createClaimStore, getClaimRuntimeReady } from '../src/claim/runtime.ts'
 import { verifySolanaSignature } from '../src/claim/signature.ts'
 import { ClaimService } from '../src/claim/service.ts'
 import { snapshotMetadata } from '../src/claim/snapshot.ts'
@@ -43,12 +51,15 @@ describe('validation and signature binding', () => {
     const wallet = Keypair.generate()
     const otherWallet = Keypair.generate()
     const message = buildClaimMessage({
+      chainName: boroMainnetClaimConfig.chainName,
+      purpose: boroMainnetClaimConfig.purpose,
       snapshot: snapshotMetadata,
       solanaAddress: wallet.publicKey.toBase58(),
       evmRecipient: '0x000000000000000000000000000000000000dEaD',
       holderBdtchRaw: '10',
       claimAmountRaw: '1',
       nonce: 'nonce',
+      tokenSymbol: boroMainnetClaimConfig.tokenSymbol,
     })
     const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), wallet.secretKey))
 
@@ -77,14 +88,16 @@ describe('validation and signature binding', () => {
 
   it('verifies allocation-check signatures before returning allocation data', async () => {
     const store = new MemoryClaimStore()
-    const service = new ClaimService(store, mockSender('0xabc'), 1000000n)
+    const service = new ClaimService(store, mockSender('0xabc'), 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
     seedHolder(store, holderAddress)
     const message = buildAllocationCheckMessage({
+      chainName: boroMainnetClaimConfig.chainName,
       snapshot: snapshotMetadata,
       solanaAddress: holderAddress,
+      tokenSymbol: boroMainnetClaimConfig.tokenSymbol,
     })
     const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), wallet.secretKey))
     const allocation = await service.checkAllocation({
@@ -106,7 +119,7 @@ describe('claim service', () => {
   it('rejects nonce replay and already-claimed Solana wallets', async () => {
     const store = new MemoryClaimStore()
     const sender = mockSender('0xabc')
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -135,7 +148,7 @@ describe('claim service', () => {
   it('does not send twice for concurrent duplicate submissions', async () => {
     const store = new MemoryClaimStore()
     const sender = mockSender('0xabc')
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -155,17 +168,17 @@ describe('claim service', () => {
     const results = await Promise.all([service.submitClaim(submit), service.submitClaim(submit)])
 
     expect(results.some((result) => result.claim.txHash === '0xabc')).toBe(true)
-    expect(sender.sendTestcoin).toHaveBeenCalledTimes(1)
+    expect(sender.sendClaimToken).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the claim failed when a submitted transfer does not confirm', async () => {
     const store = new MemoryClaimStore()
     const sendError = Object.assign(new Error('reverted'), { txHash: '0xreverted' })
     const sender = {
-      sendTestcoin: vi.fn<TokenSender['sendTestcoin']>().mockRejectedValueOnce(sendError),
+      sendClaimToken: vi.fn<TokenSender['sendClaimToken']>().mockRejectedValueOnce(sendError),
       getTransferRecoveryState: vi.fn<TokenSender['getTransferRecoveryState']>(),
     }
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -197,8 +210,8 @@ describe('claim service', () => {
     const store = new MemoryClaimStore()
     const sendError = Object.assign(new Error('temporary rpc failure'), { txHash: '0xreverted' })
     const sender = {
-      sendTestcoin: vi
-        .fn<TokenSender['sendTestcoin']>()
+      sendClaimToken: vi
+        .fn<TokenSender['sendClaimToken']>()
         .mockRejectedValueOnce(sendError)
         .mockImplementationOnce(async () => {
           const retrying = await store.getClaimBySolana(holderAddress)
@@ -210,7 +223,7 @@ describe('claim service', () => {
         recipientBalanceCoversAmount: false,
       }),
     }
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -241,8 +254,8 @@ describe('claim service', () => {
       txHash: '0xretry',
       errorCode: null,
     })
-    expect(sender.sendTestcoin).toHaveBeenCalledTimes(2)
-    expect(sender.sendTestcoin).toHaveBeenLastCalledWith({
+    expect(sender.sendClaimToken).toHaveBeenCalledTimes(2)
+    expect(sender.sendClaimToken).toHaveBeenLastCalledWith({
       recipient: normalizeEvmAddress('0x000000000000000000000000000000000000dEaD'),
       amountRaw: BigInt(challenge.claimAmountRaw),
       idempotencyKey: failed?.id,
@@ -253,13 +266,13 @@ describe('claim service', () => {
     const store = new MemoryClaimStore()
     const sendError = Object.assign(new Error('timeout after accept'), { txHash: '0xaccepted' })
     const sender = {
-      sendTestcoin: vi.fn<TokenSender['sendTestcoin']>().mockRejectedValueOnce(sendError),
+      sendClaimToken: vi.fn<TokenSender['sendClaimToken']>().mockRejectedValueOnce(sendError),
       getTransferRecoveryState: vi.fn<TokenSender['getTransferRecoveryState']>().mockResolvedValue({
         txStatus: 'success',
         recipientBalanceCoversAmount: false,
       }),
     }
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -286,15 +299,15 @@ describe('claim service', () => {
       recovered: true,
       claim: { id: failed?.id, status: 'sent', txHash: '0xaccepted', errorCode: null },
     })
-    expect(sender.sendTestcoin).toHaveBeenCalledTimes(1)
+    expect(sender.sendClaimToken).toHaveBeenCalledTimes(1)
   })
 
   it('blocks missing recorded transaction retry unless the admin explicitly allows it', async () => {
     const store = new MemoryClaimStore()
     const sendError = Object.assign(new Error('dropped after accept'), { txHash: '0xdropped' })
     const sender = {
-      sendTestcoin: vi
-        .fn<TokenSender['sendTestcoin']>()
+      sendClaimToken: vi
+        .fn<TokenSender['sendClaimToken']>()
         .mockRejectedValueOnce(sendError)
         .mockResolvedValueOnce('0xretry'),
       getTransferRecoveryState: vi.fn<TokenSender['getTransferRecoveryState']>().mockResolvedValue({
@@ -302,7 +315,7 @@ describe('claim service', () => {
         recipientBalanceCoversAmount: false,
       }),
     }
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -329,19 +342,19 @@ describe('claim service', () => {
 
     const retry = await service.retryFailedClaim({ claimId: failed?.id, allowMissingTxRetry: true })
     expect(retry.claim).toMatchObject({ id: failed?.id, status: 'sent', txHash: '0xretry' })
-    expect(sender.sendTestcoin).toHaveBeenCalledTimes(2)
+    expect(sender.sendClaimToken).toHaveBeenCalledTimes(2)
   })
 
   it('recovers without resending when the recipient balance already covers the claim', async () => {
     const store = new MemoryClaimStore()
     const sender = {
-      sendTestcoin: vi.fn<TokenSender['sendTestcoin']>().mockRejectedValueOnce(new Error('rpc timeout')),
+      sendClaimToken: vi.fn<TokenSender['sendClaimToken']>().mockRejectedValueOnce(new Error('rpc timeout')),
       getTransferRecoveryState: vi.fn<TokenSender['getTransferRecoveryState']>().mockResolvedValue({
         txStatus: 'not_checked',
         recipientBalanceCoversAmount: true,
       }),
     }
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -368,13 +381,13 @@ describe('claim service', () => {
       recovered: true,
       claim: { id: failed?.id, status: 'confirmed', txHash: null, errorCode: null },
     })
-    expect(sender.sendTestcoin).toHaveBeenCalledTimes(1)
+    expect(sender.sendClaimToken).toHaveBeenCalledTimes(1)
   })
 
   it('rejects admin retry for claims that are not failed', async () => {
     const store = new MemoryClaimStore()
     const sender = mockSender('0xabc')
-    const service = new ClaimService(store, sender, 1000000n)
+    const service = new ClaimService(store, sender, 1000000n, boroMainnetClaimConfig)
     const wallet = Keypair.generate()
     const holderAddress = wallet.publicKey.toBase58()
 
@@ -394,46 +407,68 @@ describe('claim service', () => {
     await expect(service.retryFailedClaim({ claimId: result.claim.id })).rejects.toMatchObject({
       code: 'claim_retry_not_failed',
     })
-    expect(sender.sendTestcoin).toHaveBeenCalledTimes(1)
+    expect(sender.sendClaimToken).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('claim runtime store configuration', () => {
-  it('disables legacy testnet claims by default in production', () => {
+  it('uses Base mainnet BORO claims by default', () => {
     expect(getTestnetClaimsEnabled({ NODE_ENV: 'production' })).toBe(false)
+    expect(getTestnetClaimsEnabled({ NODE_ENV: 'development' })).toBe(false)
+    expect(getClaimRuntimeConfig({ NODE_ENV: 'production' })).toBe(boroMainnetClaimConfig)
   })
 
-  it('allows production deployments to explicitly opt in to legacy testnet claims', () => {
+  it('uses legacy Base Sepolia mode only with explicit opt-in', () => {
     expect(getTestnetClaimsEnabled({ NODE_ENV: 'production', ENABLE_TESTNET_CLAIMS: 'true' })).toBe(true)
     expect(getTestnetClaimsEnabled({ NODE_ENV: 'production', ENABLE_TESTNET_CLAIMS: 'false' })).toBe(false)
+    expect(getClaimRuntimeConfig({ ENABLE_TESTNET_CLAIMS: 'true' })).toBe(legacyTestnetClaimConfig)
   })
 
-  it('keeps legacy testnet claims enabled outside production by default', () => {
-    expect(getTestnetClaimsEnabled({ NODE_ENV: 'development' })).toBe(true)
-    expect(getTestnetClaimsEnabled({ NODE_ENV: 'test' })).toBe(true)
+  it('keeps legacy testnet env requirements isolated to explicit testnet mode', () => {
+    expect(getMissingRuntimeEnv({ ENABLE_TESTNET_CLAIMS: 'true' }, legacyTestnetClaimConfig)).toEqual([
+      'DATABASE_URL',
+      'BASE_SEPOLIA_RPC_URL',
+      'BASE_SEPOLIA_TESTCOIN_ADDRESS',
+      'BASE_SEPOLIA_AIRDROP_PRIVATE_KEY',
+      'TESTCOIN_CLAIM_POOL_RAW',
+    ])
   })
 
-  it('fails closed in production when DATABASE_URL is missing', async () => {
+  it('reports incomplete Base mainnet BORO production env without legacy Sepolia names', async () => {
     const env = {
       NODE_ENV: 'production',
-      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
-      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
-      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
-      TESTCOIN_CLAIM_POOL_RAW: '1',
+      BASE_MAINNET_RPC_URL: 'https://example.invalid',
+      BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BORO_CLAIM_SENDER_PRIVATE_KEY: privateKey,
+      BORO_CLAIM_POOL_RAW: '1',
     }
 
+    expect(getMissingRuntimeEnv(env, boroMainnetClaimConfig)).toEqual(['DATABASE_URL'])
     expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(false)
     await expect(createClaimStore(env)).rejects.toThrow('DATABASE_URL is required for production claim persistence.')
+  })
+
+  it('reports invalid Base mainnet BORO env before runtime startup', () => {
+    expect(
+      getInvalidRuntimeEnv(
+        {
+          BASE_MAINNET_BORO_ADDRESS: 'not-an-address',
+          BORO_CLAIM_SENDER_PRIVATE_KEY: 'bad-key',
+          BORO_CLAIM_POOL_RAW: '0',
+        },
+        boroMainnetClaimConfig,
+      ),
+    ).toEqual(['BASE_MAINNET_BORO_ADDRESS', 'BORO_CLAIM_SENDER_PRIVATE_KEY', 'BORO_CLAIM_POOL_RAW'])
   })
 
   it('rejects explicit in-memory claims in production', async () => {
     const env = {
       NODE_ENV: 'production',
       ALLOW_IN_MEMORY_CLAIMS: 'true',
-      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
-      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
-      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
-      TESTCOIN_CLAIM_POOL_RAW: '1',
+      BASE_MAINNET_RPC_URL: 'https://example.invalid',
+      BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BORO_CLAIM_SENDER_PRIVATE_KEY: privateKey,
+      BORO_CLAIM_POOL_RAW: '1',
     }
 
     expect(() => getClaimRuntimeReady(env, ['DATABASE_URL'])).toThrow(
@@ -446,10 +481,10 @@ describe('claim runtime store configuration', () => {
     const env = {
       NODE_ENV: 'development',
       ALLOW_IN_MEMORY_CLAIMS: 'true',
-      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
-      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
-      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
-      TESTCOIN_CLAIM_POOL_RAW: '1',
+      BASE_MAINNET_RPC_URL: 'https://example.invalid',
+      BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BORO_CLAIM_SENDER_PRIVATE_KEY: privateKey,
+      BORO_CLAIM_POOL_RAW: '1',
     }
 
     expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(true)
@@ -459,10 +494,10 @@ describe('claim runtime store configuration', () => {
   it('requires explicit in-memory opt-in outside production', async () => {
     const env = {
       NODE_ENV: 'test',
-      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
-      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
-      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
-      TESTCOIN_CLAIM_POOL_RAW: '1',
+      BASE_MAINNET_RPC_URL: 'https://example.invalid',
+      BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BORO_CLAIM_SENDER_PRIVATE_KEY: privateKey,
+      BORO_CLAIM_POOL_RAW: '1',
     }
 
     expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(false)
@@ -475,10 +510,10 @@ describe('claim runtime store configuration', () => {
     const env = {
       NODE_ENV: 'staging',
       ALLOW_IN_MEMORY_CLAIMS: 'true',
-      BASE_SEPOLIA_RPC_URL: 'https://example.invalid',
-      BASE_SEPOLIA_TESTCOIN_ADDRESS: '0x000000000000000000000000000000000000dEaD',
-      BASE_SEPOLIA_AIRDROP_PRIVATE_KEY: privateKey,
-      TESTCOIN_CLAIM_POOL_RAW: '1',
+      BASE_MAINNET_RPC_URL: 'https://example.invalid',
+      BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+      BORO_CLAIM_SENDER_PRIVATE_KEY: privateKey,
+      BORO_CLAIM_POOL_RAW: '1',
     }
 
     expect(getClaimRuntimeReady(env, ['DATABASE_URL'])).toBe(false)
@@ -490,7 +525,7 @@ describe('claim runtime store configuration', () => {
 
 function mockSender(txHash: string): TokenSender {
   return {
-    sendTestcoin: vi.fn(async () => txHash),
+    sendClaimToken: vi.fn(async () => txHash),
     getTransferRecoveryState: vi.fn(async () => ({
       txStatus: 'not_checked' as const,
       recipientBalanceCoversAmount: false,

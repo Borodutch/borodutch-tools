@@ -1,7 +1,5 @@
 export const SNAPSHOT_ID = 'bdtch-2026-05-22-helius-421437667'
 export const DOMAIN = 'Borodutch Tools'
-export const PURPOSE = 'Base Sepolia $testcoin claim'
-export const BASE_SEPOLIA_CHAIN_ID = 84532
 
 export type SnapshotMetadata = {
   id: string
@@ -86,7 +84,7 @@ export type TransferRecoveryState = {
 }
 
 export type TokenSender = {
-  sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }): Promise<string>
+  sendClaimToken(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }): Promise<string>
   getTransferRecoveryState(input: {
     recipient: string
     amountRaw: bigint

@@ -41,11 +41,11 @@ secrets, never in tickets, logs, PRs, or repo files.
    lock proxy.
 7. Set `VITE_BORO_LOCK_ADDRESS` to the confirmed lock proxy address and
    redeploy the frontend.
-8. Deploy and fund the Merkle distributor using
-   `docs/boro-merkle-distributor.md` after the final allocation/proof source is
-   ready.
-9. Verify production UI, contract links, token balances, distributor funding,
-   claim proof lookup, and lock transactions before public launch.
+8. Configure the backend hot-wallet claim runtime with Base mainnet `$BORO`
+   env, Postgres persistence, and an admin retry token.
+9. Verify production UI, contract links, token balances, `/api/claim/config`,
+   a safe canary or dry-run claim proof, and lock transactions before public
+   launch.
 
 ## Frontend env
 
@@ -64,9 +64,23 @@ final.
 
 Do not include legacy Base Sepolia `BASE_SEPOLIA_*` values in the normal
 production service build args or runtime environment. The old `$testcoin` claim
-API is disabled by default in production; only a deliberate staging/testnet
+API is disabled by default; only a deliberate staging/testnet
 deployment should opt back in with `ENABLE_TESTNET_CLAIMS=true` and deployment
 secrets.
+
+## Backend claim env
+
+Set these as production backend runtime secrets only:
+
+- `DATABASE_URL`
+- `BASE_MAINNET_RPC_URL`
+- `BASE_MAINNET_BORO_ADDRESS`
+- `BORO_CLAIM_SENDER_PRIVATE_KEY`
+- `BORO_CLAIM_POOL_RAW`
+- `CLAIM_ADMIN_TOKEN`
+
+Do not expose `BORO_CLAIM_SENDER_PRIVATE_KEY`, `CLAIM_ADMIN_TOKEN`, or private
+RPC URLs to frontend builds or repository files.
 
 ## Required metadata to record
 
@@ -123,12 +137,10 @@ Lock deployment and handoff:
 Distribution:
 
 - distribution wallet funding tx hashes
-- distributor contract address
-- Merkle root
-- claim deadline
-- funding amount
-- funding tx hash
-- distributor `$BORO` balance after funding
+- claim sender public address
+- claim pool raw amount
+- claim sender `$BORO` balance after funding
+- canary or dry-run claim evidence
 
 ## Production verification
 
@@ -136,8 +148,11 @@ Distribution:
   primary UI.
 - The `$BORO` contract card shows the full confirmed Base mainnet address,
   copies it to the clipboard, and links to `basescan.org/token/<address>`.
-- The claim card remains pending until the distributor and proof source are
-  ready.
+- `/api/claim/config` returns `enabled=true`, `chainId=8453`, Base mainnet
+  `$BORO` metadata, and `missingRuntimeEnv: []` when production claim env is
+  complete.
+- The claim card connects a Solana wallet, shows Base mainnet `$BORO`
+  allocation copy, and submits claims through the signed holder flow.
 - The lock card remains pending until `VITE_BORO_LOCK_ADDRESS` is configured,
   then connects to Base mainnet and submits `$BORO` approvals/locks against the
   lock proxy.

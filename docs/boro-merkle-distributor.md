@@ -1,7 +1,9 @@
 # $BORO Merkle distributor
 
-`contracts/src/BoroMerkleDistributor.sol` is the recommended treasury claim
-path for Base mainnet $BORO.
+`contracts/src/BoroMerkleDistributor.sol` is the on-chain treasury claim
+alternative for Base mainnet $BORO. The active production path currently reuses
+the signed Solana holder -> Base recipient backend hot-wallet flow documented in
+the repository README.
 
 ## Design decision
 

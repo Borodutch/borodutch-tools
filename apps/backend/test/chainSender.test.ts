@@ -73,10 +73,12 @@ vi.mock('viem/accounts', () => ({
 }))
 
 vi.mock('viem/chains', () => ({
+  base: { id: 8453, name: 'Base' },
   baseSepolia: { id: 84532, name: 'Base Sepolia' },
 }))
 
-const { BaseSepoliaTokenSender } = await import('../src/claim/chainSender.ts')
+const { BaseSepoliaTokenSender, ClaimTokenSender } = await import('../src/claim/chainSender.ts')
+const { boroMainnetClaimConfig } = await import('../src/claim/config.ts')
 
 describe('Base Sepolia token sender', () => {
   beforeEach(() => {
@@ -87,12 +89,12 @@ describe('Base Sepolia token sender', () => {
     const sender = createSender()
 
     await Promise.all([
-      sender.sendTestcoin({
+      sender.sendClaimToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
       }),
-      sender.sendTestcoin({
+      sender.sendClaimToken({
         recipient: '0x000000000000000000000000000000000000bEEF',
         amountRaw: 2n,
         idempotencyKey: 'claim-2',
@@ -107,12 +109,12 @@ describe('Base Sepolia token sender', () => {
     const sender = createSender()
 
     const [firstTxHash, secondTxHash] = await Promise.all([
-      sender.sendTestcoin({
+      sender.sendClaimToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
       }),
-      sender.sendTestcoin({
+      sender.sendClaimToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
@@ -126,14 +128,14 @@ describe('Base Sepolia token sender', () => {
   it('rejects reuse of an idempotencyKey for a different transfer', async () => {
     const sender = createSender()
 
-    await sender.sendTestcoin({
+    await sender.sendClaimToken({
       recipient: '0x000000000000000000000000000000000000dEaD',
       amountRaw: 1n,
       idempotencyKey: 'claim-1',
     })
 
     await expect(
-      sender.sendTestcoin({
+      sender.sendClaimToken({
         recipient: '0x000000000000000000000000000000000000bEEF',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
@@ -147,13 +149,41 @@ describe('Base Sepolia token sender', () => {
     viemMocks.waitForTransactionReceipt.mockRejectedValueOnce(new Error('receipt timeout'))
 
     await expect(
-      sender.sendTestcoin({
+      sender.sendClaimToken({
         recipient: '0x000000000000000000000000000000000000dEaD',
         amountRaw: 1n,
         idempotencyKey: 'claim-1',
       }),
     ).rejects.toMatchObject({ txHash: '0x1' })
     expect(viemMocks.writeContract).toHaveBeenCalledTimes(1)
+  })
+
+  it('supports Base mainnet BORO sender env and rejects wrong-chain RPCs', async () => {
+    viemMocks.createPublicClient.mockReturnValueOnce({
+      getChainId: vi.fn(async () => 84532),
+      simulateContract: viemMocks.simulateContract,
+      waitForTransactionReceipt: viemMocks.waitForTransactionReceipt,
+      getTransactionReceipt: viemMocks.getTransactionReceipt,
+      getTransaction: viemMocks.getTransaction,
+      readContract: viemMocks.readContract,
+    })
+    const sender = new ClaimTokenSender(
+      {
+        BASE_MAINNET_RPC_URL: 'https://base.example',
+        BASE_MAINNET_BORO_ADDRESS: '0x000000000000000000000000000000000000c0Fe',
+        BORO_CLAIM_SENDER_PRIVATE_KEY: '1'.repeat(64),
+      },
+      boroMainnetClaimConfig,
+    )
+
+    await expect(
+      sender.sendClaimToken({
+        recipient: '0x000000000000000000000000000000000000dEaD',
+        amountRaw: 1n,
+        idempotencyKey: 'claim-1',
+      }),
+    ).rejects.toThrow('Base mainnet RPC returned unexpected chain id')
+    expect(viemMocks.writeContract).not.toHaveBeenCalled()
   })
 })
 

@@ -2,14 +2,8 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { calculateClaimAmountRaw, parsePositiveRawAmount } from './math.ts'
 import { buildAllocationCheckMessage, buildClaimMessage, digestMessage } from './message.ts'
 import { verifySolanaSignature } from './signature.ts'
-import {
-  BASE_SEPOLIA_CHAIN_ID,
-  DOMAIN,
-  PURPOSE,
-  type ClaimRecord,
-  type ClaimStore,
-  type TokenSender,
-} from './types.ts'
+import { DOMAIN, type ClaimRecord, type ClaimStore, type TokenSender } from './types.ts'
+import type { ClaimRuntimeConfig } from './config.ts'
 import { normalizeEvmAddress, normalizeSolanaAddress } from './validation.ts'
 
 const challengeTtlMs = 15 * 60 * 1000
@@ -19,6 +13,7 @@ export class ClaimService {
     private readonly store: ClaimStore,
     private readonly sender: TokenSender,
     private readonly claimPoolRaw: bigint,
+    private readonly config: ClaimRuntimeConfig,
   ) {}
 
   getConfig(missingRuntimeEnv: string[]) {
@@ -26,11 +21,13 @@ export class ClaimService {
 
     return {
       app: DOMAIN,
-      purpose: PURPOSE,
+      purpose: this.config.purpose,
       enabled: true,
-      chainId: BASE_SEPOLIA_CHAIN_ID,
+      chainId: this.config.chainId,
+      chainName: this.config.chainName,
       snapshot,
       claimPoolRaw: this.claimPoolRaw.toString(),
+      tokenSymbol: this.config.tokenSymbol,
       missingRuntimeEnv,
     }
   }
@@ -63,8 +60,10 @@ export class ClaimService {
   getAllocationCheckMessage(solanaAddressInput: unknown) {
     const solanaAddress = normalizeSolanaAddress(solanaAddressInput)
     const message = buildAllocationCheckMessage({
+      chainName: this.config.chainName,
       snapshot: this.store.getSnapshot(),
       solanaAddress,
+      tokenSymbol: this.config.tokenSymbol,
     })
 
     return {
@@ -123,17 +122,20 @@ export class ClaimService {
     })
 
     if (claimAmountRaw <= 0n) {
-      throw new ClaimError('zero_allocation', 'This wallet has a zero $testcoin allocation.')
+      throw new ClaimError('zero_allocation', `This wallet has a zero ${this.config.tokenSymbol} allocation.`)
     }
 
     const nonce = randomBytes(18).toString('hex')
     const message = buildClaimMessage({
+      chainName: this.config.chainName,
+      purpose: this.config.purpose,
       snapshot: this.store.getSnapshot(),
       solanaAddress,
       evmRecipient,
       holderBdtchRaw: holder.amountRaw,
       claimAmountRaw: claimAmountRaw.toString(),
       nonce,
+      tokenSymbol: this.config.tokenSymbol,
     })
 
     const challenge = await this.store.createChallenge({
@@ -222,7 +224,7 @@ export class ClaimService {
     }
 
     try {
-      const txHash = await this.sender.sendTestcoin({
+      const txHash = await this.sender.sendClaimToken({
         recipient: evmRecipient,
         amountRaw: BigInt(challenge.claimAmountRaw),
         idempotencyKey: pending.claim.id,
@@ -233,7 +235,7 @@ export class ClaimService {
       const claim = await this.store.updateClaimFailed(pending.claim.id, 'chain_send_failed', txHashFromError(error))
       throw new ClaimError(
         'chain_send_failed',
-        'The claim was recorded but the Base Sepolia transfer failed. It can be retried by an admin.',
+        `The claim was recorded but the ${this.config.chainName} ${this.config.tokenSymbol} transfer failed. It can be retried by an admin.`,
         serializeClaim(claim),
       )
     }
@@ -293,7 +295,7 @@ export class ClaimService {
     }
 
     try {
-      const txHash = await this.sender.sendTestcoin({
+      const txHash = await this.sender.sendClaimToken({
         recipient: claimToRetry.evmRecipient,
         amountRaw: BigInt(claimToRetry.claimAmountRaw),
         idempotencyKey: claimToRetry.id,
@@ -304,7 +306,7 @@ export class ClaimService {
       const claim = await this.store.updateClaimFailed(claimToRetry.id, 'chain_send_failed', txHashFromError(error))
       throw new ClaimError(
         'chain_send_failed',
-        'The admin retry was recorded, but the Base Sepolia transfer failed.',
+        `The admin retry was recorded, but the ${this.config.chainName} ${this.config.tokenSymbol} transfer failed.`,
         serializeClaim(claim),
       )
     }
@@ -325,11 +327,13 @@ export function createClaimService(input: {
   store: ClaimStore
   sender: TokenSender
   env: Record<string, string | undefined>
+  config: ClaimRuntimeConfig
 }) {
   return new ClaimService(
     input.store,
     input.sender,
-    parsePositiveRawAmount(input.env.TESTCOIN_CLAIM_POOL_RAW, 'TESTCOIN_CLAIM_POOL_RAW'),
+    parsePositiveRawAmount(input.env[input.config.claimPoolRawEnv], input.config.claimPoolRawEnv),
+    input.config,
   )
 }
 
