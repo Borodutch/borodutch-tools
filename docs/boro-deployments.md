@@ -5,7 +5,10 @@ Public addresses, tx hashes, and block numbers only — never private keys or RP
 URLs containing API keys.
 
 - Chain: Base mainnet, chain id `8453`.
-- Deployer / initial recipient / upgrade admin: `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`.
+- Token deployer / initial recipient / upgrade admin:
+  `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2`.
+- Lock deployer / distribution wallet:
+  `0xD991e2C2C7B2546e019192526100a148E087B7DC`.
 
 For every upgradeable contract, the **proxy** address is permanent and is what
 users, the frontend, and integrations reference. The **implementation** address
@@ -36,15 +39,20 @@ changes on every UUPS upgrade — append a new row to "Upgrade history" each tim
 
 | Field | Value |
 | --- | --- |
-| Proxy address (permanent) | TBD |
-| Implementation (v1) | TBD |
-| Token address | TBD (BORO token proxy) |
-| Initial lock owner | TBD |
-| Final lock owner | TBD |
-| Lock duration (seconds) | TBD (default `31536000` = 365 days) |
-| Deploy tx hash | TBD |
-| Ownership handoff tx hash | TBD |
-| Deploy block | TBD |
+| Proxy address (permanent) | `0xfDD50a8eB2fc3Ef7325606aED1cf3FFBF3dC72e2` |
+| Implementation (v1) | `0x4086EE98cEE5929911EFbA6F77cc5c5E8b48b493` |
+| Token address | `0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c` |
+| Deployer | `0xD991e2C2C7B2546e019192526100a148E087B7DC` |
+| Initial lock owner | `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2` |
+| Final lock owner | `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2` |
+| Lock duration (seconds) | `31536000` |
+| Implementation deploy tx | `0x4a606f614da6d1bc8000a3c969cb19ee913ea4a712bce7273b39705a751f00ac` |
+| Proxy deploy tx | `0x80169f17cb4c3141e237d65e2f9403fe1f12ccd960feaba0b681c05142c9da11` |
+| Ownership handoff tx hash | Not separate; owner was initialized directly to `0x75DBd3d9d83baC30982627Dcbf3c0b46Ce001EA2` |
+| Deploy block | `46480179` |
+| Basescan (proxy) | https://basescan.org/address/0xfDD50a8eB2fc3Ef7325606aED1cf3FFBF3dC72e2 |
+| Basescan (implementation) | https://basescan.org/address/0x4086EE98cEE5929911EFbA6F77cc5c5E8b48b493 |
+| Verification | Sourcify exact match; Blockscout proxy links to `BoroOneYearLock` implementation |
 
 ## BORO Merkle distributor (`contracts/src/BoroMerkleDistributor.sol`, not upgradeable)
 

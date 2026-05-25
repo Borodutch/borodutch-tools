@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   BASE_MAINNET_BORO_ADDRESS,
+  BASE_MAINNET_BORO_LOCK_ADDRESS,
   isRealAddress,
   normalizedAddress,
   shortAddress,
@@ -17,6 +18,11 @@ describe('$BORO launch config helpers', () => {
   it('keeps the confirmed Base mainnet BORO proxy address available as the default', () => {
     expect(BASE_MAINNET_BORO_ADDRESS).toBe('0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c')
     expect(isRealAddress(BASE_MAINNET_BORO_ADDRESS)).toBe(true)
+  })
+
+  it('keeps the confirmed Base mainnet BORO lock proxy address available as the default', () => {
+    expect(BASE_MAINNET_BORO_LOCK_ADDRESS).toBe('0xfDD50a8eB2fc3Ef7325606aED1cf3FFBF3dC72e2')
+    expect(isRealAddress(BASE_MAINNET_BORO_LOCK_ADDRESS)).toBe(true)
   })
 
   it('normalizes only valid EVM addresses', () => {
