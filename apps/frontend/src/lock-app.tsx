@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 import {
   approveToken,
+  chainLabel,
   connectWallet,
-  ensureBaseSepolia,
+  ensureConfiguredChain,
   explorerTxUrl,
   formatUnits,
   getConnectedAccount,
   getLockConfig,
-  isAddress,
   lockToken,
   parseUnits,
   readAllowance,
@@ -36,7 +36,7 @@ export function App() {
   const [txHash, setTxHash] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const configured = isAddress(config.tokenAddress) && isAddress(config.lockAddress)
+  const configured = config.configured
   const parsedLockAmount = useMemo(() => {
     if (!walletState || !lockAmount.trim()) return 0n
     try {
@@ -55,7 +55,7 @@ export function App() {
       }
 
       if (!configured) {
-        setStatus('Set VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS and VITE_TESTCOIN_LOCK_ADDRESS.')
+        setStatus('Lock contract pending.')
         return
       }
 
@@ -139,7 +139,7 @@ export function App() {
     setTxHash('')
 
     try {
-      await ensureBaseSepolia(provider, config.rpcUrl)
+      await ensureConfiguredChain(provider, config)
       const hash = needsApproval
         ? await approveToken(provider, config.tokenAddress, account, config.lockAddress, parsedLockAmount)
         : await lockToken(provider, config.lockAddress, account, parsedLockAmount)
@@ -156,7 +156,10 @@ export function App() {
   return (
     <section class="min-w-0 w-[calc(100vw-2rem)] rounded-lg border border-neutral-300 bg-white p-4 shadow-sm md:w-auto">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-xl font-semibold">Lock $testcoin</h1>
+        <div>
+          <h1 class="text-xl font-semibold">Lock $BORO</h1>
+          <p class="mt-1 text-xs font-medium uppercase text-neutral-500">{chainLabel(config)}</p>
+        </div>
         <button
           class="h-10 rounded-md bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
           disabled={!provider || busy}

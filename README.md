@@ -8,7 +8,10 @@ Monorepo for public tools at tools.borodutch.com.
 - apps/backend - Bun/TypeScript API that serves the frontend and processes $bdtch snapshot claims.
 - contracts - Foundry Solidity contracts and tests.
 
-The frontend exposes tools through shared navigation. The current tools are the $bdtch snapshot claim flow and the Base Sepolia $testcoin one-year lock flow.
+The frontend exposes the production $BORO launch surface for claims, locking,
+and the confirmed Base mainnet token address. The Base Sepolia $testcoin claim
+backend remains in the repo as a testnet/staging path, but it is no longer the
+primary production UI.
 The contracts package also includes the Base mainnet $BORO Merkle distributor.
 
 ## Commands
@@ -41,6 +44,8 @@ Required deployment env:
   deployment
 - `BORO_TOKEN_ADDRESS`, and optionally `BORO_LOCK_OWNER` and
   `BORO_LOCK_DURATION_SECONDS` when deploying the BORO lock
+- `VITE_BASE_MAINNET_BORO_ADDRESS` after the $BORO token address is confirmed
+- `VITE_BORO_LOCK_ADDRESS` after the Base mainnet $BORO lock is deployed
 
 Use only local ignored `.env` files or deployment secret managers for private
 keys. Verify `.env` is ignored before adding real secrets:
@@ -51,7 +56,14 @@ git check-ignore .env .env.production
 
 ## $bdtch snapshot claim flow
 
-The claim app lets a Solana $bdtch holder connect a Solana wallet, enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and submit that signed message to the backend. The backend verifies the exact message bytes against the Solana public key, records the claim before broadcasting, sends Base Sepolia $testcoin with an ERC20 `transfer`, and only marks the claim sent after a successful transaction receipt.
+The testnet claim backend lets a Solana $bdtch holder connect a Solana wallet,
+enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and
+submit that signed message to the backend. The backend verifies the exact
+message bytes against the Solana public key, records the claim before
+broadcasting, sends Base Sepolia $testcoin with an ERC20 `transfer`, and only
+marks the claim sent after a successful transaction receipt. This path is for
+staging/testnet operation; production $BORO claims use the Base mainnet Merkle
+distributor described in `docs/boro-merkle-distributor.md`.
 
 Snapshot data is checked in at `apps/backend/data/bdtch-snapshot-2026-05-22.json`.
 
@@ -98,7 +110,11 @@ Private keys must only be supplied through deployment secrets. They must not be 
 
 Claim API rate limiting uses Bun's remote socket IP by default. Set `TRUST_PROXY_HEADERS=true` only when the deployment reverse proxy overwrites incoming client IP headers; with that flag enabled, the backend accepts normalized `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`, or `x-forwarded-for` values for per-client rate-limit keys.
 
-The frontend lock view reads `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS`, `VITE_TESTCOIN_LOCK_ADDRESS`, and optionally `VITE_BASE_SEPOLIA_RPC_URL` / `VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE`.
+The production frontend reads `VITE_BASE_MAINNET_BORO_ADDRESS`,
+`VITE_BORO_LOCK_ADDRESS`, and optionally `VITE_BASE_MAINNET_RPC_URL` /
+`VITE_BORO_LOCK_MATURED_PAGE_SIZE`. The contract address card stays in a pending
+state until `VITE_BASE_MAINNET_BORO_ADDRESS` is set to a real Base mainnet
+address.
 
 ## Deployment
 
@@ -112,14 +128,14 @@ bun run start
 
 `bun run start` launches the backend, which serves the built frontend from `apps/frontend/dist` and exposes `/api/claim/*`.
 
-The frontend also includes the Base Sepolia $testcoin one-year lock flow.
-Configure it with `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS` and
-`VITE_TESTCOIN_LOCK_ADDRESS`. Deployment details for the lock contract live in
-`docs/testcoin-locking-contract.md`.
+The frontend also includes the Base mainnet $BORO one-year lock flow. Configure
+it with `VITE_BASE_MAINNET_BORO_ADDRESS` and `VITE_BORO_LOCK_ADDRESS`.
+Deployment details for the lock contract live in `docs/boro-locking-contract.md`.
 
 Base mainnet `$BORO` treasury claim distribution is designed as an on-chain
 Merkle distributor. Deployment and operator notes live in
 `docs/boro-merkle-distributor.md`.
+The full production launch checklist lives in `docs/boro-production-launch.md`.
 
 Base mainnet `$BORO` locking uses an upgradeable one-year position contract.
 Deployment, trust model, storage layout, and metadata notes live in

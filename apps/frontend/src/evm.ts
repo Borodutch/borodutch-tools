@@ -1,3 +1,7 @@
+import { isRealAddress, normalizedAddress } from './launch-config'
+
+export { isAddress } from './launch-config'
+
 export type EthereumProvider = {
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>
   on?(event: string, handler: (...args: unknown[]) => void): void
@@ -11,7 +15,13 @@ declare global {
 }
 
 export type LockConfig = {
+  blockExplorerUrl: string
+  chainId: string
+  chainIdDecimal: number
+  chainName: string
+  configured: boolean
   tokenAddress: string
+  tokenLabel: string
   lockAddress: string
   rpcUrl: string
   maturedPageSize: bigint
@@ -26,10 +36,8 @@ export type LockPosition = {
   withdrawn: boolean
 }
 
-const BASE_SEPOLIA_CHAIN_ID = '0x14a34'
-const BASE_SEPOLIA_CHAIN_ID_DECIMAL = 84532
-const DEFAULT_BASE_SEPOLIA_TESTCOIN_ADDRESS = '0x763c030fc5c0db724855123c37cfa36631116f59'
-const DEFAULT_TESTCOIN_LOCK_ADDRESS = '0x8824d182e1dd2d3aeadbfc45beaa374067c11dee'
+const BASE_MAINNET_CHAIN_ID = '0x2105'
+const BASE_MAINNET_CHAIN_ID_DECIMAL = 8453
 const ZERO_WORD = '0'.repeat(64)
 
 const selectors = {
@@ -51,16 +59,21 @@ const selectors = {
 }
 
 export function getLockConfig(): LockConfig {
-  return {
-    tokenAddress: import.meta.env.VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS ?? DEFAULT_BASE_SEPOLIA_TESTCOIN_ADDRESS,
-    lockAddress: import.meta.env.VITE_TESTCOIN_LOCK_ADDRESS ?? DEFAULT_TESTCOIN_LOCK_ADDRESS,
-    rpcUrl: import.meta.env.VITE_BASE_SEPOLIA_RPC_URL ?? 'https://sepolia.base.org',
-    maturedPageSize: BigInt(import.meta.env.VITE_TESTCOIN_LOCK_MATURED_PAGE_SIZE ?? '500'),
-  }
-}
+  const tokenAddress = normalizedAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS ?? '')
+  const lockAddress = normalizedAddress(import.meta.env.VITE_BORO_LOCK_ADDRESS ?? '')
 
-export function isAddress(value: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(value.trim())
+  return {
+    blockExplorerUrl: 'https://basescan.org',
+    chainId: BASE_MAINNET_CHAIN_ID,
+    chainIdDecimal: BASE_MAINNET_CHAIN_ID_DECIMAL,
+    chainName: 'Base mainnet',
+    configured: isRealAddress(tokenAddress) && isRealAddress(lockAddress),
+    tokenAddress,
+    tokenLabel: '$BORO',
+    lockAddress,
+    rpcUrl: import.meta.env.VITE_BASE_MAINNET_RPC_URL ?? 'https://mainnet.base.org',
+    maturedPageSize: BigInt(import.meta.env.VITE_BORO_LOCK_MATURED_PAGE_SIZE ?? '500'),
+  }
 }
 
 export function shortAddress(value: string): string {
@@ -73,19 +86,19 @@ export async function getConnectedAccount(provider: EthereumProvider): Promise<s
 }
 
 export async function connectWallet(provider: EthereumProvider): Promise<string> {
-  await ensureBaseSepolia(provider)
+  await ensureConfiguredChain(provider)
   const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[]
   return accounts[0] ?? ''
 }
 
-export async function ensureBaseSepolia(provider: EthereumProvider, rpcUrl = 'https://sepolia.base.org') {
+export async function ensureConfiguredChain(provider: EthereumProvider, config = getLockConfig()) {
   const chainId = await provider.request({ method: 'eth_chainId' })
-  if (chainId === BASE_SEPOLIA_CHAIN_ID) return
+  if (chainId === config.chainId) return
 
   try {
     await provider.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }],
+      params: [{ chainId: config.chainId }],
     })
   } catch (error) {
     if (!hasErrorCode(error, 4902)) throw error
@@ -94,11 +107,11 @@ export async function ensureBaseSepolia(provider: EthereumProvider, rpcUrl = 'ht
       method: 'wallet_addEthereumChain',
       params: [
         {
-          blockExplorerUrls: ['https://sepolia.basescan.org'],
-          chainId: BASE_SEPOLIA_CHAIN_ID,
-          chainName: 'Base Sepolia',
-          nativeCurrency: { decimals: 18, name: 'Sepolia Ether', symbol: 'ETH' },
-          rpcUrls: [rpcUrl],
+          blockExplorerUrls: [config.blockExplorerUrl],
+          chainId: config.chainId,
+          chainName: config.chainName,
+          nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' },
+          rpcUrls: [config.rpcUrl],
         },
       ],
     })
@@ -107,7 +120,7 @@ export async function ensureBaseSepolia(provider: EthereumProvider, rpcUrl = 'ht
 
 export async function readTokenDetails(provider: EthereumProvider, tokenAddress: string) {
   const decimals = Number(decodeUint(await ethCall(provider, tokenAddress, selectors.decimals)))
-  const symbol = decodeString(await ethCall(provider, tokenAddress, selectors.symbol)) || 'TEST'
+  const symbol = decodeString(await ethCall(provider, tokenAddress, selectors.symbol)) || 'BORO'
   return { decimals, symbol }
 }
 
@@ -257,12 +270,12 @@ export function formatDate(timestamp: bigint): string {
   })
 }
 
-export function explorerTxUrl(hash: string): string {
-  return `https://sepolia.basescan.org/tx/${hash}`
+export function explorerTxUrl(hash: string, config = getLockConfig()): string {
+  return `${config.blockExplorerUrl}/tx/${hash}`
 }
 
-export function chainLabel(): string {
-  return `Base Sepolia (${BASE_SEPOLIA_CHAIN_ID_DECIMAL})`
+export function chainLabel(config = getLockConfig()): string {
+  return `${config.chainName} (${config.chainIdDecimal})`
 }
 
 function encodeCall(selector: string, ...args: string[]): string {
