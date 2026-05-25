@@ -67,16 +67,29 @@ export type ClaimStore = {
   initialize(): Promise<void>
   getSnapshot(): SnapshotMetadata
   getHolder(solanaAddress: string): HolderAllocation | undefined
+  getClaimById(id: string): Promise<ClaimRecord | undefined>
   getClaimBySolana(solanaAddress: string): Promise<ClaimRecord | undefined>
   getClaimByRecipient(evmRecipient: string): Promise<ClaimRecord | undefined>
   createChallenge(input: Omit<ClaimChallenge, 'usedAt'>): Promise<ClaimChallenge>
   getChallenge(id: string): Promise<ClaimChallenge | undefined>
   markChallengeUsed(id: string): Promise<void>
   createPendingClaim(input: Omit<ClaimRecord, 'createdAt' | 'updatedAt'>): Promise<ExistingClaimResult>
+  prepareClaimRetry(id: string): Promise<ClaimRecord | undefined>
   updateClaimSent(id: string, txHash: string): Promise<ClaimRecord>
-  updateClaimFailed(id: string, errorCode: string): Promise<ClaimRecord>
+  updateClaimConfirmed(id: string, txHash: string | null): Promise<ClaimRecord>
+  updateClaimFailed(id: string, errorCode: string, txHash?: string): Promise<ClaimRecord>
+}
+
+export type TransferRecoveryState = {
+  txStatus: 'success' | 'reverted' | 'pending' | 'not_found' | 'not_checked'
+  recipientBalanceCoversAmount: boolean
 }
 
 export type TokenSender = {
   sendTestcoin(input: { recipient: string; amountRaw: bigint; idempotencyKey: string }): Promise<string>
+  getTransferRecoveryState(input: {
+    recipient: string
+    amountRaw: bigint
+    txHash: string | null
+  }): Promise<TransferRecoveryState>
 }

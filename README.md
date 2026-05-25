@@ -24,7 +24,7 @@ The frontend exposes tools through shared navigation. The current tools are the 
 
 ## $bdtch snapshot claim flow
 
-The claim app lets a Solana $bdtch holder connect a Solana wallet, enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and submit that signed message to the backend. The backend verifies the exact message bytes against the Solana public key, records the claim before broadcasting, and sends Base Sepolia $testcoin with an ERC20 `transfer`.
+The claim app lets a Solana $bdtch holder connect a Solana wallet, enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and submit that signed message to the backend. The backend verifies the exact message bytes against the Solana public key, records the claim before broadcasting, sends Base Sepolia $testcoin with an ERC20 `transfer`, and only marks the claim sent after a successful transaction receipt.
 
 Snapshot data is checked in at `apps/backend/data/bdtch-snapshot-2026-05-22.json`.
 
@@ -58,6 +58,10 @@ production even when other claim env is present. For local development or tests
 that intentionally do not use Postgres, set `ALLOW_IN_MEMORY_CLAIMS=true`
 with `NODE_ENV` unset, `development`, or `test`; without that explicit opt-in,
 the backend refuses to create an in-memory claim store.
+
+Optional admin retry environment:
+
+- `CLAIM_ADMIN_TOKEN` enables `POST /api/claim/admin/retry` with a bearer token or `x-admin-token` header. The body is `{ "claimId": "<claim-id>" }`, with optional `{ "allowMissingTxRetry": true }` only after an admin verifies a recorded transaction hash is stale or dropped. Only claims currently marked `failed` are retried. Before resending, the backend checks any recorded transaction hash and the recipient token balance; if the prior transfer already succeeded or the recipient balance already covers the claim, it recovers the claim without broadcasting again. Otherwise it moves the claim back to `pending` before broadcasting so concurrent retries do not send duplicates.
 
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 

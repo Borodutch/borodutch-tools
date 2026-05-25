@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BaseSepoliaTokenSender, getMissingRuntimeEnv } from './claim/chainSender.ts'
@@ -113,6 +114,19 @@ async function handleClaimApi(request: Request, url: URL) {
     return json(await service.submitClaim(body), 202)
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/claim/admin/retry') {
+    ensureRuntimeReady()
+    ensureClaimAdminAuthorized(request)
+    const body = (await request.json()) as { claimId: unknown; allowMissingTxRetry?: unknown }
+    return json(
+      await service.retryFailedClaim({
+        claimId: body.claimId,
+        allowMissingTxRetry: body.allowMissingTxRetry === true,
+      }),
+      202,
+    )
+  }
+
   return json({ error: 'not_found', message: 'API route not found.' }, 404)
 }
 
@@ -122,6 +136,9 @@ function createSender(): TokenSender {
   } catch {
     return {
       async sendTestcoin() {
+        throw new Error('Base Sepolia sender is not configured')
+      },
+      async getTransferRecoveryState() {
         throw new Error('Base Sepolia sender is not configured')
       },
     }
@@ -135,6 +152,22 @@ function ensureRuntimeReady() {
       'Claim service is missing required runtime environment.',
       missingRuntimeEnv,
     )
+  }
+}
+
+function ensureClaimAdminAuthorized(request: Request) {
+  const expectedToken = Bun.env.CLAIM_ADMIN_TOKEN
+
+  if (!expectedToken) {
+    throw new ClaimError('admin_not_configured', 'Claim admin retry is not configured.')
+  }
+
+  const authHeader = request.headers.get('authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined
+  const token = bearerToken ?? request.headers.get('x-admin-token')
+
+  if (!token || !tokensMatch(token, expectedToken)) {
+    throw new ClaimError('admin_unauthorized', 'Claim admin token is invalid.')
   }
 }
 
@@ -161,15 +194,30 @@ function json(body: unknown, status = 200) {
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': Bun.env.CORS_ORIGIN ?? '*',
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'authorization, content-type, x-admin-token',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
 }
 
 function statusForClaimError(code: string) {
   if (code === 'runtime_not_configured') return 503
+  if (code === 'admin_not_configured') return 503
+  if (code === 'admin_unauthorized') return 401
+  if (code === 'claim_not_found') return 404
+  if (code === 'claim_retry_not_failed') return 409
   if (code === 'not_eligible' || code === 'zero_allocation') return 403
   if (code === 'already_claimed' || code === 'recipient_already_used') return 409
   if (code === 'chain_send_failed') return 502
   return 400
+}
+
+function tokensMatch(actual: string, expected: string) {
+  const actualBytes = Buffer.from(actual)
+  const expectedBytes = Buffer.from(expected)
+
+  if (actualBytes.length !== expectedBytes.length) {
+    return false
+  }
+
+  return timingSafeEqual(actualBytes, expectedBytes)
 }

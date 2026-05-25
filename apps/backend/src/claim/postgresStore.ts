@@ -119,6 +119,12 @@ export class PostgresClaimStore implements ClaimStore {
     return holdersByOwner.get(solanaAddress)
   }
 
+  async getClaimById(id: string) {
+    const result = await this.pool.query<ClaimRow>('SELECT * FROM claims WHERE id = $1 LIMIT 1', [id])
+
+    return result.rows[0] ? claimFromRow(result.rows[0]) : undefined
+  }
+
   async getClaimBySolana(solanaAddress: string) {
     const result = await this.pool.query<ClaimRow>('SELECT * FROM claims WHERE solana_address = $1 LIMIT 1', [
       solanaAddress,
@@ -221,6 +227,18 @@ export class PostgresClaimStore implements ClaimStore {
     }
   }
 
+  async prepareClaimRetry(id: string) {
+    const result = await this.pool.query<ClaimRow>(
+      `UPDATE claims
+       SET status = 'pending', tx_hash = NULL, error_code = NULL, updated_at = now()
+       WHERE id = $1 AND status = 'failed'
+       RETURNING *`,
+      [id],
+    )
+
+    return result.rows[0] ? claimFromRow(result.rows[0]) : undefined
+  }
+
   async updateClaimSent(id: string, txHash: string) {
     const result = await this.pool.query<ClaimRow>(
       `UPDATE claims
@@ -237,13 +255,29 @@ export class PostgresClaimStore implements ClaimStore {
     return claimFromRow(result.rows[0])
   }
 
-  async updateClaimFailed(id: string, errorCode: string) {
+  async updateClaimConfirmed(id: string, txHash: string | null) {
     const result = await this.pool.query<ClaimRow>(
       `UPDATE claims
-       SET status = 'failed', error_code = $2, updated_at = now()
+       SET status = 'confirmed', tx_hash = $2, error_code = NULL, updated_at = now()
        WHERE id = $1
        RETURNING *`,
-      [id, errorCode],
+      [id, txHash],
+    )
+
+    if (!result.rows[0]) {
+      throw new Error('claim not found')
+    }
+
+    return claimFromRow(result.rows[0])
+  }
+
+  async updateClaimFailed(id: string, errorCode: string, txHash?: string) {
+    const result = await this.pool.query<ClaimRow>(
+      `UPDATE claims
+       SET status = 'failed', tx_hash = $3, error_code = $2, updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [id, errorCode, txHash ?? null],
     )
 
     if (!result.rows[0]) {

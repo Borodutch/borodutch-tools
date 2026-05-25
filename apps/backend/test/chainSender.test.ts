@@ -4,6 +4,11 @@ const viemMocks = vi.hoisted(() => {
   let activeWrites = 0
   let maxActiveWrites = 0
   let txCounter = 0
+  const simulateContract = vi.fn(async () => ({ result: true, request: { functionName: 'transfer' } }))
+  const waitForTransactionReceipt = vi.fn(async () => ({ status: 'success' }))
+  const getTransactionReceipt = vi.fn()
+  const getTransaction = vi.fn()
+  const readContract = vi.fn(async () => 0n)
   const writeContract = vi.fn(async () => {
     activeWrites += 1
     maxActiveWrites = Math.max(maxActiveWrites, activeWrites)
@@ -16,7 +21,14 @@ const viemMocks = vi.hoisted(() => {
   })
 
   return {
-    createPublicClient: vi.fn(() => ({ getChainId: vi.fn(async () => 84532) })),
+    createPublicClient: vi.fn(() => ({
+      getChainId: vi.fn(async () => 84532),
+      simulateContract,
+      waitForTransactionReceipt,
+      getTransactionReceipt,
+      getTransaction,
+      readContract,
+    })),
     createWalletClient: vi.fn(() => ({ writeContract })),
     getAddress: vi.fn((address: string) => address),
     http: vi.fn((url: string) => ({ url })),
@@ -27,8 +39,19 @@ const viemMocks = vi.hoisted(() => {
       activeWrites = 0
       maxActiveWrites = 0
       txCounter = 0
+      simulateContract.mockClear()
+      waitForTransactionReceipt.mockClear()
+      waitForTransactionReceipt.mockResolvedValue({ status: 'success' })
+      getTransactionReceipt.mockClear()
+      getTransaction.mockClear()
+      readContract.mockClear()
       writeContract.mockClear()
     },
+    simulateContract,
+    waitForTransactionReceipt,
+    getTransactionReceipt,
+    getTransaction,
+    readContract,
     writeContract,
     get maxActiveWrites() {
       return maxActiveWrites
@@ -116,6 +139,20 @@ describe('Base Sepolia token sender', () => {
         idempotencyKey: 'claim-1',
       }),
     ).rejects.toThrow('idempotency key reused')
+    expect(viemMocks.writeContract).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the transaction hash on receipt wait failures for admin recovery', async () => {
+    const sender = createSender()
+    viemMocks.waitForTransactionReceipt.mockRejectedValueOnce(new Error('receipt timeout'))
+
+    await expect(
+      sender.sendTestcoin({
+        recipient: '0x000000000000000000000000000000000000dEaD',
+        amountRaw: 1n,
+        idempotencyKey: 'claim-1',
+      }),
+    ).rejects.toMatchObject({ txHash: '0x1' })
     expect(viemMocks.writeContract).toHaveBeenCalledTimes(1)
   })
 })

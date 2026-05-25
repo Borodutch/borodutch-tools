@@ -57,8 +57,9 @@ export function App() {
   const canClaim = Boolean(allocation?.eligible && recipient && missingConfig.length === 0)
 
   const status = useMemo(() => {
-    if (claim?.txHash) return 'sent'
     if (claim?.status === 'failed') return 'failed'
+    if (claim?.status === 'confirmed') return 'confirmed'
+    if (claim?.status === 'sent' || claim?.txHash) return 'sent'
     if (allocation?.existingClaim) return 'claimed'
     if (allocation?.eligible) return 'eligible'
     if (walletAddress && allocation && !allocation.eligible) return 'ineligible'
@@ -235,7 +236,12 @@ function allocationAmount(allocation: AllocationResponse | null): string {
 }
 
 function StatusPill({ status }: { status: string }) {
-  const tone = status === 'sent' || status === 'eligible' ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-200 text-neutral-700'
+  const tone =
+    status === 'sent' || status === 'confirmed' || status === 'eligible'
+      ? 'bg-emerald-100 text-emerald-800'
+      : status === 'failed'
+        ? 'bg-red-100 text-red-800'
+        : 'bg-neutral-200 text-neutral-700'
   return <span class={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tone}`}>{status}</span>
 }
 
