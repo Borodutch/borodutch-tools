@@ -228,11 +228,50 @@ export class ClaimService {
       })
       const claim = await this.store.updateClaimSent(pending.claim.id, txHash)
       return { claim: serializeClaim(claim)!, idempotent: false }
-    } catch {
-      const claim = await this.store.updateClaimFailed(pending.claim.id, 'chain_send_failed')
+    } catch (error) {
+      const claim = await this.store.updateClaimFailed(pending.claim.id, 'chain_send_failed', txHashFromError(error))
       throw new ClaimError(
         'chain_send_failed',
-        'The claim was recorded but the Base Sepolia transfer failed. It will not be resent automatically.',
+        'The claim was recorded but the Base Sepolia transfer failed. It can be retried by an admin.',
+        serializeClaim(claim),
+      )
+    }
+  }
+
+  async retryFailedClaim(claimIdInput: unknown) {
+    if (typeof claimIdInput !== 'string' || claimIdInput.length === 0) {
+      throw new ClaimError('invalid_claim', 'Claim id is required.')
+    }
+
+    const existing = await this.store.getClaimById(claimIdInput)
+
+    if (!existing) {
+      throw new ClaimError('claim_not_found', 'Claim was not found.')
+    }
+
+    if (existing.status !== 'failed') {
+      throw new ClaimError('claim_retry_not_failed', 'Only failed claims can be retried by an admin.', serializeClaim(existing))
+    }
+
+    const claimToRetry = await this.store.prepareClaimRetry(existing.id)
+
+    if (!claimToRetry) {
+      throw new ClaimError('claim_retry_not_failed', 'Only failed claims can be retried by an admin.', serializeClaim(existing))
+    }
+
+    try {
+      const txHash = await this.sender.sendTestcoin({
+        recipient: claimToRetry.evmRecipient,
+        amountRaw: BigInt(claimToRetry.claimAmountRaw),
+        idempotencyKey: claimToRetry.id,
+      })
+      const claim = await this.store.updateClaimSent(claimToRetry.id, txHash)
+      return { claim: serializeClaim(claim)! }
+    } catch (error) {
+      const claim = await this.store.updateClaimFailed(claimToRetry.id, 'chain_send_failed', txHashFromError(error))
+      throw new ClaimError(
+        'chain_send_failed',
+        'The admin retry was recorded, but the Base Sepolia transfer failed.',
         serializeClaim(claim),
       )
     }
@@ -277,4 +316,12 @@ function serializeClaim(claim: ClaimRecord | undefined) {
     createdAt: claim.createdAt.toISOString(),
     updatedAt: claim.updatedAt.toISOString(),
   }
+}
+
+function txHashFromError(error: unknown) {
+  if (typeof error === 'object' && error !== null && 'txHash' in error && typeof error.txHash === 'string') {
+    return error.txHash
+  }
+
+  return undefined
 }

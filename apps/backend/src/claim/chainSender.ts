@@ -48,12 +48,36 @@ export class BaseSepoliaTokenSender implements TokenSender {
       throw new Error('base sepolia rpc returned unexpected chain id')
     }
 
-    return walletClient.writeContract({
+    const recipient = normalizeEvmAddress(input.recipient) as `0x${string}`
+    const simulation = await publicClient.simulateContract({
       address: this.tokenAddress,
       abi: erc20Abi,
+      account,
       functionName: 'transfer',
-      args: [normalizeEvmAddress(input.recipient) as `0x${string}`, input.amountRaw],
+      args: [recipient, input.amountRaw],
     })
+
+    if (simulation.result !== true) {
+      throw new Error('testcoin transfer simulation returned false')
+    }
+
+    const txHash = await walletClient.writeContract(simulation.request)
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+
+    if (receipt.status !== 'success') {
+      throw new TokenTransferFailedError('testcoin transfer transaction reverted', txHash)
+    }
+
+    return txHash
+  }
+}
+
+class TokenTransferFailedError extends Error {
+  constructor(
+    message: string,
+    readonly txHash: string,
+  ) {
+    super(message)
   }
 }
 

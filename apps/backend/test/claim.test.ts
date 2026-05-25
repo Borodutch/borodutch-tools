@@ -156,6 +156,116 @@ describe('claim service', () => {
     expect(results.some((result) => result.claim.txHash === '0xabc')).toBe(true)
     expect(sender.sendTestcoin).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps the claim failed when a submitted transfer does not confirm', async () => {
+    const store = new MemoryClaimStore()
+    const sendError = Object.assign(new Error('reverted'), { txHash: '0xreverted' })
+    const sender = {
+      sendTestcoin: vi.fn<TokenSender['sendTestcoin']>().mockRejectedValueOnce(sendError),
+    }
+    const service = new ClaimService(store, sender, 1000000n)
+    const wallet = Keypair.generate()
+    const holderAddress = wallet.publicKey.toBase58()
+
+    seedHolder(store, holderAddress)
+    const challenge = await service.createChallenge({
+      solanaAddress: holderAddress,
+      evmRecipient: '0x000000000000000000000000000000000000dEaD',
+    })
+    const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(challenge.message), wallet.secretKey))
+
+    await expect(
+      service.submitClaim({
+        challengeId: challenge.challengeId,
+        solanaAddress: holderAddress,
+        evmRecipient: '0x000000000000000000000000000000000000dEaD',
+        signatureBase58: signature,
+      }),
+    ).rejects.toMatchObject({ code: 'chain_send_failed' })
+
+    const failed = await store.getClaimBySolana(holderAddress)
+    expect(failed).toMatchObject({
+      status: 'failed',
+      txHash: '0xreverted',
+      errorCode: 'chain_send_failed',
+    })
+  })
+
+  it('allows an admin to retry a failed claim without sending duplicates', async () => {
+    const store = new MemoryClaimStore()
+    const sendError = Object.assign(new Error('temporary rpc failure'), { txHash: '0xreverted' })
+    const sender = {
+      sendTestcoin: vi
+        .fn<TokenSender['sendTestcoin']>()
+        .mockRejectedValueOnce(sendError)
+        .mockImplementationOnce(async () => {
+          const retrying = await store.getClaimBySolana(holderAddress)
+          expect(retrying).toMatchObject({ status: 'pending', txHash: null, errorCode: null })
+          return '0xretry'
+        }),
+    }
+    const service = new ClaimService(store, sender, 1000000n)
+    const wallet = Keypair.generate()
+    const holderAddress = wallet.publicKey.toBase58()
+
+    seedHolder(store, holderAddress)
+    const challenge = await service.createChallenge({
+      solanaAddress: holderAddress,
+      evmRecipient: '0x000000000000000000000000000000000000dEaD',
+    })
+    const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(challenge.message), wallet.secretKey))
+
+    await expect(
+      service.submitClaim({
+        challengeId: challenge.challengeId,
+        solanaAddress: holderAddress,
+        evmRecipient: '0x000000000000000000000000000000000000dEaD',
+        signatureBase58: signature,
+      }),
+    ).rejects.toMatchObject({ code: 'chain_send_failed' })
+
+    const failed = await store.getClaimBySolana(holderAddress)
+    expect(failed?.status).toBe('failed')
+
+    const retry = await service.retryFailedClaim(failed?.id)
+
+    expect(retry.claim).toMatchObject({
+      id: failed?.id,
+      status: 'sent',
+      txHash: '0xretry',
+      errorCode: null,
+    })
+    expect(sender.sendTestcoin).toHaveBeenCalledTimes(2)
+    expect(sender.sendTestcoin).toHaveBeenLastCalledWith({
+      recipient: normalizeEvmAddress('0x000000000000000000000000000000000000dEaD'),
+      amountRaw: BigInt(challenge.claimAmountRaw),
+      idempotencyKey: failed?.id,
+    })
+  })
+
+  it('rejects admin retry for claims that are not failed', async () => {
+    const store = new MemoryClaimStore()
+    const sender = mockSender('0xabc')
+    const service = new ClaimService(store, sender, 1000000n)
+    const wallet = Keypair.generate()
+    const holderAddress = wallet.publicKey.toBase58()
+
+    seedHolder(store, holderAddress)
+    const challenge = await service.createChallenge({
+      solanaAddress: holderAddress,
+      evmRecipient: '0x000000000000000000000000000000000000dEaD',
+    })
+    const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(challenge.message), wallet.secretKey))
+    const result = await service.submitClaim({
+      challengeId: challenge.challengeId,
+      solanaAddress: holderAddress,
+      evmRecipient: '0x000000000000000000000000000000000000dEaD',
+      signatureBase58: signature,
+    })
+
+    await expect(service.retryFailedClaim(result.claim.id)).rejects.toMatchObject({ code: 'claim_retry_not_failed' })
+    expect(sender.sendTestcoin).toHaveBeenCalledTimes(1)
+  })
 })
 
 function mockSender(txHash: string): TokenSender {

@@ -22,6 +22,10 @@ export class MemoryClaimStore implements ClaimStore {
     return holdersByOwner.get(solanaAddress)
   }
 
+  async getClaimById(id: string) {
+    return this.claims.get(id)
+  }
+
   async getClaimBySolana(solanaAddress: string) {
     return [...this.claims.values()].find((claim) => claim.solanaAddress === solanaAddress)
   }
@@ -66,6 +70,18 @@ export class MemoryClaimStore implements ClaimStore {
     return { inserted: true, claim }
   }
 
+  async prepareClaimRetry(id: string) {
+    const claim = this.claims.get(id)
+
+    if (!claim || claim.status !== 'failed') {
+      return undefined
+    }
+
+    const updated = { ...claim, txHash: null, status: 'pending' as const, errorCode: null, updatedAt: new Date() }
+    this.claims.set(id, updated)
+    return updated
+  }
+
   async updateClaimSent(id: string, txHash: string) {
     const claim = this.claims.get(id)
 
@@ -78,14 +94,14 @@ export class MemoryClaimStore implements ClaimStore {
     return updated
   }
 
-  async updateClaimFailed(id: string, errorCode: string) {
+  async updateClaimFailed(id: string, errorCode: string, txHash?: string) {
     const claim = this.claims.get(id)
 
     if (!claim) {
       throw new Error('claim not found')
     }
 
-    const updated = { ...claim, status: 'failed' as const, errorCode, updatedAt: new Date() }
+    const updated = { ...claim, txHash: txHash ?? null, status: 'failed' as const, errorCode, updatedAt: new Date() }
     this.claims.set(id, updated)
     return updated
   }

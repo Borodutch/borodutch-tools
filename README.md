@@ -24,7 +24,7 @@ The frontend exposes tools through shared navigation. The current tools are the 
 
 ## $bdtch snapshot claim flow
 
-The claim app lets a Solana $bdtch holder connect a Solana wallet, enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and submit that signed message to the backend. The backend verifies the exact message bytes against the Solana public key, records the claim before broadcasting, and sends Base Sepolia $testcoin with an ERC20 `transfer`.
+The claim app lets a Solana $bdtch holder connect a Solana wallet, enter a Base Sepolia EVM recipient, sign a human-readable Solana message, and submit that signed message to the backend. The backend verifies the exact message bytes against the Solana public key, records the claim before broadcasting, sends Base Sepolia $testcoin with an ERC20 `transfer`, and only marks the claim sent after a successful transaction receipt.
 
 Snapshot data is checked in at `apps/backend/data/bdtch-snapshot-2026-05-22.json`.
 
@@ -49,6 +49,10 @@ Required runtime environment:
 - `BASE_SEPOLIA_TESTCOIN_ADDRESS`
 - `BASE_SEPOLIA_AIRDROP_PRIVATE_KEY`
 - `TESTCOIN_CLAIM_POOL_RAW`
+
+Optional admin retry environment:
+
+- `CLAIM_ADMIN_TOKEN` enables `POST /api/claim/admin/retry` with a bearer token or `x-admin-token` header. The body is `{ "claimId": "<claim-id>" }`. Only claims currently marked `failed` are retried, and the backend moves the claim back to `pending` before broadcasting so concurrent retries do not send duplicates.
 
 The backend creates these Postgres tables on startup: `claim_snapshots`, `holder_allocations`, `claim_challenges`, and `claims`. Uniqueness constraints prevent reused nonces, duplicate Solana-wallet claims, duplicate challenge claims, and reused EVM recipients.
 
