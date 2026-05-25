@@ -112,9 +112,9 @@ Claim API rate limiting uses Bun's remote socket IP by default. Set `TRUST_PROXY
 
 The production frontend reads `VITE_BASE_MAINNET_BORO_ADDRESS`,
 `VITE_BORO_LOCK_ADDRESS`, and optionally `VITE_BASE_MAINNET_RPC_URL` /
-`VITE_BORO_LOCK_MATURED_PAGE_SIZE`. The contract address card stays in a pending
-state until `VITE_BASE_MAINNET_BORO_ADDRESS` is set to a real Base mainnet
-address.
+`VITE_BORO_LOCK_MATURED_PAGE_SIZE`. The confirmed Base mainnet BORO token proxy
+is the frontend default; set `VITE_BASE_MAINNET_BORO_ADDRESS` only to override
+that public address.
 
 ## Deployment
 

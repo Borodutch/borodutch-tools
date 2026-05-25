@@ -1,4 +1,4 @@
-import { isRealAddress, normalizedAddress } from './launch-config'
+import { BASE_MAINNET_BORO_ADDRESS, isRealAddress, normalizedAddress } from './launch-config'
 
 export { isAddress } from './launch-config'
 
@@ -59,7 +59,7 @@ const selectors = {
 }
 
 export function getLockConfig(): LockConfig {
-  const tokenAddress = normalizedAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS ?? '')
+  const tokenAddress = normalizedAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS ?? BASE_MAINNET_BORO_ADDRESS)
   const lockAddress = normalizedAddress(import.meta.env.VITE_BORO_LOCK_ADDRESS ?? '')
 
   return {

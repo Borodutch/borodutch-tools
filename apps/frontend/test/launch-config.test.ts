@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'bun:test'
-import { isRealAddress, normalizedAddress, shortAddress, ZERO_ADDRESS } from '../src/launch-config'
+import {
+  BASE_MAINNET_BORO_ADDRESS,
+  isRealAddress,
+  normalizedAddress,
+  shortAddress,
+  ZERO_ADDRESS,
+} from '../src/launch-config'
 
 describe('$BORO launch config helpers', () => {
   it('rejects placeholders as real production addresses', () => {
     expect(isRealAddress('')).toBe(false)
     expect(isRealAddress(ZERO_ADDRESS)).toBe(false)
     expect(isRealAddress('0x0000000000000000000000000000000000000001')).toBe(true)
+  })
+
+  it('keeps the confirmed Base mainnet BORO proxy address available as the default', () => {
+    expect(BASE_MAINNET_BORO_ADDRESS).toBe('0x91f11Ad8fa616E95b41C88dFFde95D415F3F9C3c')
+    expect(isRealAddress(BASE_MAINNET_BORO_ADDRESS)).toBe(true)
   })
 
   it('normalizes only valid EVM addresses', () => {
