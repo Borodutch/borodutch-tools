@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC20, TestcoinOneYearLock} from "../src/TestcoinOneYearLock.sol";
+import {IERC20, SafeERC20Lite, TestcoinOneYearLock} from "../src/TestcoinOneYearLock.sol";
 
 interface Vm {
+    function deal(address account, uint256 amount) external;
     function expectRevert(bytes4 selector) external;
     function expectRevert(bytes calldata revertData) external;
     function prank(address sender) external;
@@ -84,6 +85,55 @@ contract TestcoinOneYearLockTest {
         vm.expectRevert(TestcoinOneYearLock.ZeroAmount.selector);
         lockContract.lock(0);
         vm.stopPrank();
+    }
+
+    function testPlainEthTransferRevertsAndLeavesAccountingUnchanged() external {
+        vm.deal(ALICE, 1 ether);
+
+        vm.prank(ALICE);
+        (bool success, bytes memory returndata) = payable(address(lockContract)).call{value: 1 wei}("");
+
+        assertFalse(success, "eth transfer success");
+        assertEq(bytes4(returndata), TestcoinOneYearLock.UnsupportedAsset.selector, "revert selector");
+        assertEq(address(lockContract).balance, 0, "eth balance");
+        assertEq(token.balanceOf(address(lockContract)), 0, "token balance");
+        assertEq(lockContract.totalLocked(), 0, "total locked");
+        assertEq(lockContract.lockedAmountOf(ALICE), 0, "alice locked");
+        assertEq(lockContract.activePositionCount(), 0, "active count");
+    }
+
+    function testCalldataWithValueRevertsAndLeavesAccountingUnchanged() external {
+        vm.deal(ALICE, 1 ether);
+
+        vm.prank(ALICE);
+        (bool success, bytes memory returndata) =
+            payable(address(lockContract)).call{value: 1 wei}(abi.encodeCall(lockContract.lock, (1 ether)));
+
+        assertFalse(success, "value call success");
+        assertEq(bytes4(returndata), TestcoinOneYearLock.UnsupportedAsset.selector, "revert selector");
+        assertEq(address(lockContract).balance, 0, "eth balance");
+        assertEq(token.balanceOf(address(lockContract)), 0, "token balance");
+        assertEq(lockContract.totalLocked(), 0, "total locked");
+        assertEq(lockContract.lockedAmountOf(ALICE), 0, "alice locked");
+        assertEq(lockContract.activePositionCount(), 0, "active count");
+    }
+
+    function testLockCannotUseUnsupportedTokenApproval() external {
+        MockERC20 unsupportedToken = new MockERC20();
+        unsupportedToken.mint(ALICE, 100 ether);
+
+        vm.startPrank(ALICE);
+        unsupportedToken.approve(address(lockContract), 100 ether);
+        vm.expectRevert(SafeERC20Lite.ERC20CallFailed.selector);
+        lockContract.lock(100 ether);
+        vm.stopPrank();
+
+        assertEq(unsupportedToken.balanceOf(ALICE), 100 ether, "unsupported token alice balance");
+        assertEq(unsupportedToken.balanceOf(address(lockContract)), 0, "unsupported token contract balance");
+        assertEq(token.balanceOf(address(lockContract)), 0, "configured token contract balance");
+        assertEq(lockContract.totalLocked(), 0, "total locked");
+        assertEq(lockContract.lockedAmountOf(ALICE), 0, "alice locked");
+        assertEq(lockContract.activePositionCount(), 0, "active count");
     }
 
     function testCannotWithdrawBeforeOneYear() external {
@@ -200,6 +250,12 @@ contract TestcoinOneYearLockTest {
     }
 
     function assertEq(address actual, address expected, string memory message) private pure {
+        if (actual != expected) {
+            revert(message);
+        }
+    }
+
+    function assertEq(bytes4 actual, bytes4 expected, string memory message) private pure {
         if (actual != expected) {
             revert(message);
         }
