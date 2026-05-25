@@ -4,5 +4,8 @@ apps/*/dist
 contracts/cache
 contracts/out
 broadcast
+.env
+.env.*
+!.env.example
 .DS_Store
 *.log

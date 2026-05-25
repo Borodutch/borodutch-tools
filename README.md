@@ -9,6 +9,7 @@ Monorepo for public tools at tools.borodutch.com.
 - contracts - Foundry Solidity contracts and tests.
 
 The frontend exposes tools through shared navigation. The current tools are the $bdtch snapshot claim flow and the Base Sepolia $testcoin one-year lock flow.
+The contracts package also includes the Base mainnet $BORO Merkle distributor.
 
 ## Commands
 
@@ -72,3 +73,7 @@ The frontend also includes the Base Sepolia $testcoin one-year lock flow.
 Configure it with `VITE_BASE_SEPOLIA_TESTCOIN_ADDRESS` and
 `VITE_TESTCOIN_LOCK_ADDRESS`. Deployment details for the lock contract live in
 `docs/testcoin-locking-contract.md`.
+
+Base mainnet `$BORO` treasury claim distribution is designed as an on-chain
+Merkle distributor. Deployment and operator notes live in
+`docs/boro-merkle-distributor.md`.
