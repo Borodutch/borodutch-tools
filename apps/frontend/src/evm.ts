@@ -138,10 +138,25 @@ export async function getConnectedAccount(provider: EthereumProvider): Promise<s
   return accounts[0] ?? null
 }
 
-export async function connectWallet(provider: EthereumProvider): Promise<string> {
-  await ensureConfiguredChain(provider)
-  const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[]
+export async function connectWallet(
+  provider: EthereumProvider,
+  options: { skipChainSetup?: boolean } = {},
+): Promise<string> {
+  if (!options.skipChainSetup) {
+    await ensureConfiguredChain(provider)
+  }
+
+  const accounts = await requestAccounts(provider)
   return accounts[0] ?? ''
+}
+
+async function requestAccounts(provider: EthereumProvider): Promise<string[]> {
+  try {
+    return (await provider.request({ method: 'eth_requestAccounts' })) as string[]
+  } catch (error) {
+    if (!isUnsupportedMethodError(error)) throw error
+    return (await provider.request({ method: 'eth_accounts' })) as string[]
+  }
 }
 
 function legacyEthereumProviders(win: Pick<Window, 'ethereum'>): EthereumProvider[] {
@@ -488,4 +503,12 @@ function hexToUtf8(hex: string): string {
 
 function hasErrorCode(error: unknown, code: number): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === code
+}
+
+function isUnsupportedMethodError(error: unknown): boolean {
+  if (hasErrorCode(error, 4200)) return true
+  return (
+    error instanceof Error &&
+    /does not support the requested method|unsupported method|method not supported/i.test(error.message)
+  )
 }

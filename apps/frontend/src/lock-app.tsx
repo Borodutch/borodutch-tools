@@ -55,6 +55,7 @@ export function App({
 
   const configured = config.configured
   const provider = selectedProvider ?? (walletOptions.length === 1 ? walletOptions[0]?.provider : undefined)
+  const isFarcasterWallet = Boolean(provider && farcasterProvider && provider === farcasterProvider)
   const parsedLockAmount = useMemo(() => {
     if (!walletState || !lockAmount.trim()) return 0n
     try {
@@ -204,7 +205,7 @@ export function App({
     try {
       setSelectedProvider(nextProvider)
       setWalletPickerOpen(false)
-      const connected = await connectWallet(nextProvider)
+      const connected = await connectWallet(nextProvider, { skipChainSetup: nextProvider === farcasterProvider })
       await refresh(connected, nextProvider)
     } catch (error) {
       setStatus(errorMessage(error))
@@ -223,7 +224,9 @@ export function App({
     setTxHash('')
 
     try {
-      await ensureConfiguredChain(provider, config)
+      if (!isFarcasterWallet) {
+        await ensureConfiguredChain(provider, config)
+      }
       const approving = needsApproval
       const hash = needsApproval
         ? await approveToken(provider, config.tokenAddress, account, config.lockAddress, amount)
