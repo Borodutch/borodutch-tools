@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   BASE_MAINNET_BORO_ADDRESS,
   BASE_MAINNET_BORO_LOCK_ADDRESS,
+  configuredAddress,
   isRealAddress,
   normalizedAddress,
   shortAddress,
@@ -30,6 +31,12 @@ describe('$BORO launch config helpers', () => {
       '0x0000000000000000000000000000000000000001',
     )
     expect(normalizedAddress('pending')).toBe('')
+  })
+
+  it('falls back to default addresses when deployment env vars are empty', () => {
+    expect(configuredAddress('', BASE_MAINNET_BORO_ADDRESS)).toBe(BASE_MAINNET_BORO_ADDRESS)
+    expect(configuredAddress(undefined, BASE_MAINNET_BORO_LOCK_ADDRESS)).toBe(BASE_MAINNET_BORO_LOCK_ADDRESS)
+    expect(configuredAddress('pending', BASE_MAINNET_BORO_ADDRESS)).toBe('')
   })
 
   it('shortens addresses for compact metrics', () => {

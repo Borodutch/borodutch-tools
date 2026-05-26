@@ -1,5 +1,5 @@
 import { createStore, type EIP6963ProviderDetail, type Store } from 'mipd'
-import { BASE_MAINNET_BORO_ADDRESS, BASE_MAINNET_BORO_LOCK_ADDRESS, isRealAddress, normalizedAddress } from './launch-config'
+import { BASE_MAINNET_BORO_ADDRESS, BASE_MAINNET_BORO_LOCK_ADDRESS, configuredAddress, isRealAddress } from './launch-config'
 
 export { isAddress } from './launch-config'
 
@@ -80,8 +80,8 @@ const selectors = {
 }
 
 export function getLockConfig(): LockConfig {
-  const tokenAddress = normalizedAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS ?? BASE_MAINNET_BORO_ADDRESS)
-  const lockAddress = normalizedAddress(import.meta.env.VITE_BORO_LOCK_ADDRESS ?? BASE_MAINNET_BORO_LOCK_ADDRESS)
+  const tokenAddress = configuredAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS, BASE_MAINNET_BORO_ADDRESS)
+  const lockAddress = configuredAddress(import.meta.env.VITE_BORO_LOCK_ADDRESS, BASE_MAINNET_BORO_LOCK_ADDRESS)
 
   return {
     blockExplorerUrl: 'https://basescan.org',

@@ -9,12 +9,16 @@ export type BoroLaunchConfig = {
 }
 
 export function getBoroLaunchConfig(): BoroLaunchConfig {
-  const tokenAddress = normalizedAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS ?? BASE_MAINNET_BORO_ADDRESS)
+  const tokenAddress = configuredAddress(import.meta.env.VITE_BASE_MAINNET_BORO_ADDRESS, BASE_MAINNET_BORO_ADDRESS)
   return {
     tokenAddress,
     tokenConfigured: isRealAddress(tokenAddress),
     tokenExplorerUrl: tokenAddress ? `https://basescan.org/token/${tokenAddress}` : '',
   }
+}
+
+export function configuredAddress(value: string | undefined, fallback: string): string {
+  return normalizedAddress(value || fallback)
 }
 
 export function isRealAddress(value: string): boolean {
