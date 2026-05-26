@@ -64,6 +64,21 @@ describe('EVM wallet provider discovery', () => {
     expect(options).toHaveLength(1)
     expect(options[0]?.provider).toBe(metamask)
   })
+
+  it('uses the Farcaster Mini App provider when supplied', () => {
+    const farcasterProvider = provider()
+    const metamask = provider({ isMetaMask: true })
+
+    const options = getEvmWalletOptions({ ethereum: metamask }, [], {
+      id: 'farcaster-miniapp-wallet',
+      name: 'Farcaster Wallet',
+      provider: farcasterProvider,
+    })
+
+    expect(options).toHaveLength(1)
+    expect(options[0]?.name).toBe('Farcaster Wallet')
+    expect(options[0]?.provider).toBe(farcasterProvider)
+  })
 })
 
 function provider(flags: Partial<EthereumProvider> = {}): EthereumProvider {

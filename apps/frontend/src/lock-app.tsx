@@ -21,6 +21,7 @@ import {
   shortAddress,
   waitForTransactionReceipt,
 } from './evm'
+import { getFarcasterEthereumProvider } from './farcaster'
 
 type WalletState = {
   allowance: bigint
@@ -33,9 +34,17 @@ type WalletState = {
 const config = getLockConfig()
 const evmWalletStore = createEvmWalletStore()
 
-export function App() {
+export function App({
+  farcasterRuntime = false,
+  miniAppMode = false,
+}: {
+  farcasterRuntime?: boolean
+  miniAppMode?: boolean
+}) {
   const [walletOptions, setWalletOptions] = useState<EvmWalletOption[]>([])
   const [selectedProvider, setSelectedProvider] = useState<EthereumProvider | null>(null)
+  const [farcasterProvider, setFarcasterProvider] = useState<EthereumProvider | null>(null)
+  const [farcasterWalletError, setFarcasterWalletError] = useState('')
   const [walletPickerOpen, setWalletPickerOpen] = useState(false)
   const [account, setAccount] = useState('')
   const [lockAmount, setLockAmount] = useState('')
@@ -99,13 +108,51 @@ export function App() {
   )
 
   useEffect(() => {
-    const updateWalletOptions = () => setWalletOptions(getEvmWalletOptions(window, evmWalletStore.getProviders()))
+    if (!miniAppMode || !farcasterRuntime) return undefined
+
+    let cancelled = false
+    getFarcasterEthereumProvider()
+      .then((nextProvider) => {
+        if (cancelled) return
+        if (nextProvider) {
+          setFarcasterProvider(nextProvider)
+          setFarcasterWalletError('')
+        } else {
+          setFarcasterWalletError('This Farcaster client does not expose a Base wallet. Open in a browser with an EVM wallet to lock $BORO.')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFarcasterWalletError('This Farcaster client does not expose a Base wallet. Open in a browser with an EVM wallet to lock $BORO.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [farcasterRuntime, miniAppMode])
+
+  useEffect(() => {
+    const farcasterWallet = farcasterProvider
+      ? {
+          id: 'farcaster-miniapp-wallet',
+          name: 'Farcaster Wallet',
+          provider: farcasterProvider,
+        }
+      : null
+    const updateWalletOptions = () =>
+      setWalletOptions(getEvmWalletOptions(window, evmWalletStore.getProviders(), farcasterWallet))
 
     updateWalletOptions()
     return evmWalletStore.subscribe(() => updateWalletOptions())
-  }, [])
+  }, [farcasterProvider])
 
   useEffect(() => {
+    if (walletOptions.length === 0 && farcasterWalletError) {
+      setStatus(farcasterWalletError)
+      return
+    }
+
     if (!selectedProvider && walletOptions.length === 1) {
       refresh().catch((error: unknown) => setStatus(errorMessage(error)))
       return
@@ -117,7 +164,7 @@ export function App() {
     }
 
     refresh().catch((error: unknown) => setStatus(errorMessage(error)))
-  }, [refresh, selectedProvider, walletOptions.length])
+  }, [farcasterWalletError, refresh, selectedProvider, walletOptions.length])
 
   useEffect(() => {
     if (!provider?.on || !provider.removeListener) return undefined
@@ -191,7 +238,7 @@ export function App() {
   }
 
   return (
-    <section class="min-w-0 w-[calc(100vw-2rem)] rounded-lg border border-neutral-300 bg-white p-4 shadow-sm md:w-auto">
+    <section class="min-w-0 w-full max-w-full rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold">Lock $BORO</h1>

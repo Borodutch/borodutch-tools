@@ -8,6 +8,11 @@ type SolanaSignMessageResult =
       signature: Uint8Array
     }
 
+export type FarcasterSolanaProvider = {
+  request(args: { method: 'connect' }): Promise<{ publicKey: string }>
+  signMessage(message: string): Promise<{ signature: string }>
+}
+
 type InjectedSolanaProvider = {
   isPhantom?: boolean
   publicKey?: SolanaPublicKey
@@ -60,16 +65,22 @@ export type SolanaWallet = {
 
 export const NO_SOLANA_WALLET_MESSAGE =
   'No Solana wallet found. Install or enable Phantom, Solflare, or Backpack, then try again.'
+export const FARCASTER_SOLANA_UNSUPPORTED_MESSAGE =
+  'This Farcaster client does not expose a Solana wallet. Open tools.borodutch.com in a browser with Phantom, Solflare, or Backpack to claim $BORO.'
 
-export function findSolanaWalletProvider(win: SolanaWindow = window): SolanaWallet | null {
-  return findInjectedSolanaWallet(win) ?? null
+export function findSolanaWalletProvider(
+  win: SolanaWindow = window,
+  farcasterProvider?: FarcasterSolanaProvider | null,
+): SolanaWallet | null {
+  return (farcasterProvider ? farcasterSolanaWallet(farcasterProvider) : null) ?? findInjectedSolanaWallet(win) ?? null
 }
 
 export async function waitForSolanaWalletProvider(
   win: SolanaWindow = window,
   timeoutMs = 1500,
+  farcasterProvider?: FarcasterSolanaProvider | null,
 ): Promise<SolanaWallet | null> {
-  const immediate = findSolanaWalletProvider(win)
+  const immediate = findSolanaWalletProvider(win, farcasterProvider)
   if (immediate) return immediate
 
   return new Promise((resolve) => {
@@ -88,7 +99,7 @@ export async function waitForSolanaWalletProvider(
     }
 
     const check = () => {
-      const wallet = findSolanaWalletProvider(win)
+      const wallet = findSolanaWalletProvider(win, farcasterProvider)
       if (wallet) finish(wallet)
     }
 
@@ -104,11 +115,12 @@ export async function waitForSolanaWalletProvider(
 export async function connectSolanaWallet(
   win: SolanaWindow = window,
   timeoutMs = 1500,
+  options: { farcasterProvider?: FarcasterSolanaProvider | null; miniAppMode?: boolean } = {},
 ): Promise<{ wallet: SolanaWallet; publicKey: string }> {
-  const wallet = await waitForSolanaWalletProvider(win, timeoutMs)
+  const wallet = await waitForSolanaWalletProvider(win, timeoutMs, options.farcasterProvider)
 
   if (!wallet) {
-    throw new Error(NO_SOLANA_WALLET_MESSAGE)
+    throw new Error(options.miniAppMode ? FARCASTER_SOLANA_UNSUPPORTED_MESSAGE : NO_SOLANA_WALLET_MESSAGE)
   }
 
   return { wallet, publicKey: await wallet.connect() }
@@ -161,6 +173,23 @@ function injectedSolanaWallet(provider: InjectedSolanaProvider): SolanaWallet {
         if (provider.off) provider.off(event, handler)
         else if (provider.removeListener) provider.removeListener(event, handler)
       }
+    },
+  }
+}
+
+function farcasterSolanaWallet(provider: FarcasterSolanaProvider): SolanaWallet {
+  return {
+    label: 'Farcaster Solana wallet',
+    async connect() {
+      const connection = await provider.request({ method: 'connect' })
+      if (!connection.publicKey) {
+        throw new Error('Wallet did not return a Solana public key.')
+      }
+      return connection.publicKey
+    },
+    async signMessage(message) {
+      const signed = await provider.signMessage(message)
+      return signatureStringBytes(signed.signature)
     },
   }
 }
@@ -288,4 +317,52 @@ function base58Encode(bytes: Uint8Array): string {
     .reverse()
     .map((digit) => alphabet[digit])
     .join('')}`
+}
+
+function signatureStringBytes(signature: string): Uint8Array {
+  const value = signature.trim()
+  if (/^0x[0-9a-f]+$/i.test(value) && value.length % 2 === 0) {
+    return Uint8Array.from(value.slice(2).match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? [])
+  }
+
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+    try {
+      const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
+      const binary = atob(padded)
+      if (binary.length > 0) {
+        return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+      }
+    } catch {
+      // Fall through to base58; Farcaster hosts may choose either encoding.
+    }
+  }
+
+  return base58Decode(value)
+}
+
+function base58Decode(value: string): Uint8Array {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+  const indexes = new Map([...alphabet].map((char, index) => [char, index]))
+  let zeros = 0
+  while (zeros < value.length && value[zeros] === '1') zeros += 1
+
+  const bytes = [0]
+  for (const char of value) {
+    const index = indexes.get(char)
+    if (index === undefined) throw new Error('Wallet did not return a valid message signature.')
+
+    let carry = index
+    for (let byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
+      const next = bytes[byteIndex] * 58 + carry
+      bytes[byteIndex] = next & 0xff
+      carry = next >> 8
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff)
+      carry >>= 8
+    }
+  }
+
+  return Uint8Array.from([...Array(zeros).fill(0), ...bytes.reverse()])
 }

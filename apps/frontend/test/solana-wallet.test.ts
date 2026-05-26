@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   connectSolanaWallet,
   extractSignatureBytes,
+  FARCASTER_SOLANA_UNSUPPORTED_MESSAGE,
   findSolanaWalletProvider,
   waitForSolanaWalletProvider,
 } from '../src/solana-wallet'
@@ -11,6 +12,14 @@ describe('solana wallet provider discovery', () => {
     const win = testWindow()
 
     await expect(connectSolanaWallet(win, 1)).rejects.toThrow('No Solana wallet found')
+  })
+
+  it('returns a precise Mini App fallback when the host has no Solana provider', async () => {
+    const win = testWindow()
+
+    await expect(connectSolanaWallet(win, 1, { miniAppMode: true })).rejects.toThrow(
+      FARCASTER_SOLANA_UNSUPPORTED_MESSAGE,
+    )
   })
 
   it('waits for delayed provider injection', async () => {
@@ -55,6 +64,20 @@ describe('solana wallet provider discovery', () => {
     const connected = await connectSolanaWallet(win)
 
     expect(connected.publicKey).toBe('ConnectedPublicKey')
+  })
+
+  it('connects and signs through the Farcaster Solana provider', async () => {
+    const win = testWindow()
+    const farcasterProvider = {
+      request: async () => ({ publicKey: 'FarcasterPublicKey' }),
+      signMessage: async () => ({ signature: btoa(String.fromCharCode(7, 8, 9)) }),
+    }
+
+    const connected = await connectSolanaWallet(win, 1, { farcasterProvider, miniAppMode: true })
+
+    expect(connected.publicKey).toBe('FarcasterPublicKey')
+    expect(connected.wallet.label).toBe('Farcaster Solana wallet')
+    await expect(connected.wallet.signMessage('hello')).resolves.toEqual(new Uint8Array([7, 8, 9]))
   })
 
   it('signs with injected providers that return direct signature bytes', async () => {
