@@ -1,0 +1,26 @@
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_22", "bun"]
+
+[phases.install]
+dependsOn = ["setup"]
+onlyIncludeFiles = [
+  "package.json",
+  "bun.lock",
+  "apps/frontend/package.json",
+  "apps/backend/package.json"
+]
+cacheDirectories = ["/root/.bun/install/cache"]
+cmds = ["bun install --frozen-lockfile"]
+
+[phases.build]
+dependsOn = ["install"]
+cmds = ["bun run build"]
+
+[start]
+cmd = "bun run start"
+
+[variables]
+NODE_ENV = "production"
+BUN_INSTALL_CACHE_DIR = "/root/.bun/install/cache"

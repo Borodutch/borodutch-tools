@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
+import { extname } from 'node:path'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClaimTokenSender, getClaimRuntimeConfig, getMissingRuntimeEnv } from './claim/chainSender.ts'
@@ -214,10 +215,14 @@ function serveStatic(url: URL) {
   const file = Bun.file(filePath)
 
   if (file.size > 0) {
-    return new Response(file)
+    return new Response(file, { headers: staticHeaders(pathname) })
   }
 
-  return new Response(Bun.file(join(distDir, 'index.html')))
+  if (url.pathname === '/.well-known/farcaster.json') {
+    return json({ error: 'not_found', message: 'Farcaster manifest not found.' }, 404)
+  }
+
+  return new Response(Bun.file(join(distDir, 'index.html')), { headers: staticHeaders('/index.html') })
 }
 
 function json(body: unknown, status = 200) {
@@ -233,6 +238,47 @@ function corsHeaders() {
     'Access-Control-Allow-Headers': 'authorization, content-type, x-admin-token',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
+}
+
+function staticHeaders(pathname: string) {
+  const contentType = contentTypeFor(pathname)
+
+  return {
+    ...(contentType ? { 'Content-Type': contentType } : {}),
+    'Cache-Control': cacheControlFor(pathname),
+  }
+}
+
+function contentTypeFor(pathname: string) {
+  if (pathname === '/.well-known/farcaster.json' || pathname.endsWith('.webmanifest')) return 'application/json; charset=utf-8'
+
+  switch (extname(pathname)) {
+    case '.html':
+      return 'text/html; charset=utf-8'
+    case '.css':
+      return 'text/css; charset=utf-8'
+    case '.js':
+      return 'text/javascript; charset=utf-8'
+    case '.json':
+      return 'application/json; charset=utf-8'
+    case '.png':
+      return 'image/png'
+    case '.svg':
+      return 'image/svg+xml'
+    case '.ico':
+      return 'image/x-icon'
+    default:
+      return undefined
+  }
+}
+
+function cacheControlFor(pathname: string) {
+  if (pathname === '/.well-known/farcaster.json') return 'public, max-age=60, must-revalidate'
+  if (pathname.startsWith('/farcaster/') || pathname.endsWith('.png') || pathname.endsWith('.svg')) {
+    return 'public, max-age=86400, must-revalidate'
+  }
+
+  return 'public, max-age=0, must-revalidate'
 }
 
 function statusForClaimError(code: string) {
