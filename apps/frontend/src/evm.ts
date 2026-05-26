@@ -1,8 +1,17 @@
+import { createStore, type EIP6963ProviderDetail, type Store } from 'mipd'
 import { BASE_MAINNET_BORO_ADDRESS, BASE_MAINNET_BORO_LOCK_ADDRESS, isRealAddress, normalizedAddress } from './launch-config'
 
 export { isAddress } from './launch-config'
 
 export type EthereumProvider = {
+  isBraveWallet?: boolean
+  isCoinbaseWallet?: boolean
+  isFrame?: boolean
+  isMetaMask?: boolean
+  isPhantom?: boolean
+  isRabby?: boolean
+  isTrust?: boolean
+  providers?: EthereumProvider[]
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>
   on?(event: string, handler: (...args: unknown[]) => void): void
   removeListener?(event: string, handler: (...args: unknown[]) => void): void
@@ -34,6 +43,13 @@ export type LockPosition = {
   lockedAt: bigint
   unlockAt: bigint
   withdrawn: boolean
+}
+
+export type EvmWalletOption = {
+  id: string
+  name: string
+  icon?: string
+  provider: EthereumProvider
 }
 
 const BASE_MAINNET_CHAIN_ID = '0x2105'
@@ -76,6 +92,37 @@ export function getLockConfig(): LockConfig {
   }
 }
 
+export function createEvmWalletStore(): Store {
+  return createStore()
+}
+
+export function getEvmWalletOptions(
+  win: Pick<Window, 'ethereum'> = window,
+  providerDetails: readonly EIP6963ProviderDetail[] = [],
+): EvmWalletOption[] {
+  const options: EvmWalletOption[] = []
+  for (const detail of providerDetails) {
+    const provider = detail.provider as unknown
+    if (!isEthereumProvider(provider)) continue
+    options.push({
+      icon: detail.info.icon,
+      id: detail.info.uuid || detail.info.rdns || detail.info.name,
+      name: detail.info.name || walletName(provider),
+      provider,
+    })
+  }
+
+  if (options.length > 0) return dedupeWalletOptions(options)
+
+  return dedupeWalletOptions(
+    legacyEthereumProviders(win).map((provider, index) => ({
+      id: `legacy-${walletName(provider).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${index}`,
+      name: walletName(provider),
+      provider,
+    })),
+  )
+}
+
 export function shortAddress(value: string): string {
   return `${value.slice(0, 6)}...${value.slice(-4)}`
 }
@@ -89,6 +136,41 @@ export async function connectWallet(provider: EthereumProvider): Promise<string>
   await ensureConfiguredChain(provider)
   const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[]
   return accounts[0] ?? ''
+}
+
+function legacyEthereumProviders(win: Pick<Window, 'ethereum'>): EthereumProvider[] {
+  const provider = win.ethereum
+  if (!isEthereumProvider(provider)) return []
+  const providers = Array.isArray(provider.providers) ? provider.providers.filter(isEthereumProvider) : []
+  return providers.length > 0 ? providers : [provider]
+}
+
+function isEthereumProvider(provider: unknown): provider is EthereumProvider {
+  return Boolean(provider && typeof provider === 'object' && 'request' in provider && typeof provider.request === 'function')
+}
+
+function walletName(provider: EthereumProvider): string {
+  if (provider.isMetaMask) return 'MetaMask'
+  if (provider.isPhantom) return 'Phantom'
+  if (provider.isCoinbaseWallet) return 'Coinbase Wallet'
+  if (provider.isRabby) return 'Rabby'
+  if (provider.isTrust) return 'Trust Wallet'
+  if (provider.isBraveWallet) return 'Brave Wallet'
+  if (provider.isFrame) return 'Frame'
+  return 'Injected wallet'
+}
+
+function dedupeWalletOptions(options: EvmWalletOption[]): EvmWalletOption[] {
+  const seen = new Set<EthereumProvider>()
+  const deduped: EvmWalletOption[] = []
+
+  for (const option of options) {
+    if (seen.has(option.provider)) continue
+    seen.add(option.provider)
+    deduped.push(option)
+  }
+
+  return deduped
 }
 
 export async function ensureConfiguredChain(provider: EthereumProvider, config = getLockConfig()) {

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "bs58": "^6.0.0",
+    "mipd": "^0.0.7",
     "preact": "^10.29.1"
   },
   "devDependencies": {
