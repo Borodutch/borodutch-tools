@@ -45,6 +45,11 @@ export type LockPosition = {
   withdrawn: boolean
 }
 
+export type TransactionReceipt = {
+  status?: string
+  transactionHash?: string
+}
+
 export type EvmWalletOption = {
   id: string
   name: string
@@ -323,6 +328,35 @@ export async function withdrawAllMatured(
   owner: string,
 ): Promise<string> {
   return sendTransaction(provider, owner, lockAddress, selectors.withdrawMatured)
+}
+
+export async function waitForTransactionReceipt(
+  provider: EthereumProvider,
+  txHash: string,
+  { pollMs = 2000, timeoutMs = 120000 } = {},
+): Promise<TransactionReceipt> {
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    const receipt = (await provider.request({
+      method: 'eth_getTransactionReceipt',
+      params: [txHash],
+    })) as TransactionReceipt | null
+
+    if (receipt) {
+      if (receipt.status && receipt.status !== '0x1') {
+        throw new Error('Transaction failed on-chain.')
+      }
+
+      return receipt
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error('Transaction is still pending. Refresh in a moment or open the transaction link.')
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+  }
 }
 
 export function formatUnits(value: bigint, decimals: number): string {

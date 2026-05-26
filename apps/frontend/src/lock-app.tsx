@@ -19,6 +19,7 @@ import {
   readTokenBalance,
   readTokenDetails,
   shortAddress,
+  waitForTransactionReceipt,
 } from './evm'
 
 type WalletState = {
@@ -172,12 +173,16 @@ export function App() {
 
     try {
       await ensureConfiguredChain(provider, config)
+      const approving = needsApproval
       const hash = needsApproval
         ? await approveToken(provider, config.tokenAddress, account, config.lockAddress, parsedLockAmount)
         : await lockToken(provider, config.lockAddress, account, parsedLockAmount)
       setTxHash(hash)
-      setStatus(needsApproval ? 'Approval submitted.' : 'Lock submitted.')
-      await refresh()
+      setStatus(approving ? 'Approval submitted. Waiting for confirmation...' : 'Lock submitted. Waiting for confirmation...')
+      await waitForTransactionReceipt(provider, hash)
+      await refresh(account, provider)
+      if (!approving) setLockAmount('')
+      setStatus(approving ? 'Approval confirmed.' : 'Lock confirmed.')
     } catch (error) {
       setStatus(errorMessage(error))
     } finally {
