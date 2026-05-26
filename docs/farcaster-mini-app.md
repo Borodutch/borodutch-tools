@@ -3,8 +3,8 @@
 `tools.borodutch.com` publishes Farcaster Mini App discovery data from the frontend static assets:
 
 - `/.well-known/farcaster.json`
-- `/farcaster/icon.png` - 1024x1024 PNG, no alpha
-- `/farcaster/splash.png` - 200x200 PNG, no alpha
+- `/farcaster/icon-favicon.png` - 1024x1024 PNG, no alpha
+- `/farcaster/splash-favicon.png` - 200x200 PNG, no alpha
 - `/farcaster/frame.png` - 1200x800 PNG, 3:2 Mini App embed image
 
 The root HTML includes both `fc:miniapp` and backward-compatible `fc:frame` metadata. The embed button title is `Claim $BORO` and launches `https://tools.borodutch.com/?miniApp=true`, which lets the app skip the X embed and call the Farcaster SDK `ready` action as soon as the UI is interactive.

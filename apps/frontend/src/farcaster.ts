@@ -3,8 +3,8 @@ import { sdk as farcasterSdk } from '@farcaster/miniapp-sdk'
 export const FARCASTER_DOMAIN = 'tools.borodutch.com'
 export const FARCASTER_ORIGIN = `https://${FARCASTER_DOMAIN}`
 export const FARCASTER_MINI_APP_URL = `${FARCASTER_ORIGIN}/?miniApp=true`
-export const FARCASTER_ICON_URL = `${FARCASTER_ORIGIN}/farcaster/icon.png`
-export const FARCASTER_SPLASH_URL = `${FARCASTER_ORIGIN}/farcaster/splash.png`
+export const FARCASTER_ICON_URL = `${FARCASTER_ORIGIN}/farcaster/icon-favicon.png`
+export const FARCASTER_SPLASH_URL = `${FARCASTER_ORIGIN}/farcaster/splash-favicon.png`
 export const FARCASTER_FRAME_IMAGE_URL = `${FARCASTER_ORIGIN}/farcaster/frame.png`
 export const FARCASTER_SPLASH_BACKGROUND = '#f7f7f4'
 
