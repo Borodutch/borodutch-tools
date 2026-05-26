@@ -6,7 +6,7 @@ import { App as LockApp } from './lock-app'
 export function App() {
   return (
     <main class="min-h-svh bg-[#f7f7f4] text-neutral-950">
-      <div class="mx-auto grid max-w-full grid-cols-1 gap-4 px-4 py-4 md:max-w-6xl md:px-6 lg:px-8">
+      <div class="mx-auto grid max-w-full grid-cols-1 gap-4 px-4 py-4 md:max-w-7xl md:px-6 lg:px-8">
         <header class="grid gap-3 py-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <div>
             <p class="text-xs font-semibold uppercase text-neutral-500">Borodutch Tools</p>
@@ -15,11 +15,12 @@ export function App() {
           <BoroContractAddress />
         </header>
 
-        <LaunchTweet />
-
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <ClaimApp />
-          <LockApp />
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)] lg:items-start">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <ClaimApp />
+            <LockApp />
+          </div>
+          <LaunchTweet />
         </div>
       </div>
     </main>
@@ -45,7 +46,7 @@ function LaunchTweet() {
   }, [])
 
   return (
-    <section class="min-w-0 overflow-hidden rounded-lg border border-neutral-300 bg-white p-3 shadow-sm">
+    <section class="min-w-0 overflow-hidden rounded-lg border border-neutral-300 bg-white p-3 shadow-sm lg:sticky lg:top-4">
       <blockquote class="twitter-tweet mx-auto" data-dnt="true" data-theme="light">
         <a href="https://x.com/backmeupplz/status/2059067753684963349">BORO launch explanation on X</a>
       </blockquote>
