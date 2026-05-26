@@ -3,6 +3,8 @@ import { BASE_MAINNET_BORO_ADDRESS, BASE_MAINNET_BORO_LOCK_ADDRESS, isRealAddres
 export { isAddress } from './launch-config'
 
 export type EthereumProvider = {
+  isMetaMask?: boolean
+  isPhantom?: boolean
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>
   on?(event: string, handler: (...args: unknown[]) => void): void
   removeListener?(event: string, handler: (...args: unknown[]) => void): void

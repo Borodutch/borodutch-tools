@@ -16,6 +16,7 @@ import {
   readTokenDetails,
   shortAddress,
 } from './evm'
+import { createEvmWalletStore, type EvmWallet } from './evm-wallets'
 
 type WalletState = {
   allowance: bigint
@@ -28,7 +29,9 @@ type WalletState = {
 const config = getLockConfig()
 
 export function App() {
-  const provider = typeof window !== 'undefined' ? window.ethereum : undefined
+  const [wallets, setWallets] = useState<EvmWallet[]>([])
+  const [selectedWalletId, setSelectedWalletId] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [account, setAccount] = useState('')
   const [lockAmount, setLockAmount] = useState('')
   const [walletState, setWalletState] = useState<WalletState | null>(null)
@@ -37,6 +40,11 @@ export function App() {
   const [busy, setBusy] = useState(false)
 
   const configured = config.configured
+  const selectedWallet = useMemo(
+    () => wallets.find((wallet) => wallet.id === selectedWalletId) ?? null,
+    [selectedWalletId, wallets],
+  )
+  const provider = selectedWallet?.provider
   const parsedLockAmount = useMemo(() => {
     if (!walletState || !lockAmount.trim()) return 0n
     try {
@@ -47,10 +55,33 @@ export function App() {
   }, [lockAmount, walletState])
   const needsApproval = parsedLockAmount > 0n && walletState ? walletState.allowance < parsedLockAmount : false
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const walletStore = createEvmWalletStore()
+    const syncWallets = (nextWallets: EvmWallet[]) => {
+      setWallets(nextWallets)
+      setSelectedWalletId((currentId) => {
+        if (nextWallets.some((wallet) => wallet.id === currentId)) return currentId
+        return nextWallets.length === 1 ? nextWallets[0]?.id ?? '' : ''
+      })
+      if (nextWallets.length === 0) setStatus('No injected EVM wallet detected.')
+    }
+
+    const unsubscribe = walletStore.subscribe(syncWallets, true)
+
+    return () => {
+      unsubscribe()
+      walletStore.destroy()
+    }
+  }, [])
+
   const refresh = useCallback(
-    async (accountOverride?: string) => {
-      if (!provider) {
-        setStatus('No injected EVM wallet detected.')
+    async (accountOverride?: string, providerOverride?: EvmWallet['provider']) => {
+      const activeProvider = providerOverride ?? provider
+
+      if (!activeProvider) {
+        setStatus(wallets.length > 0 ? 'Choose an EVM wallet to connect.' : 'No injected EVM wallet detected.')
         return
       }
 
@@ -59,7 +90,11 @@ export function App() {
         return
       }
 
-      const connected = accountOverride === undefined ? account || (await getConnectedAccount(provider)) || '' : accountOverride
+      const sameProvider = providerOverride === undefined || providerOverride === provider
+      const connected =
+        accountOverride === undefined
+          ? (sameProvider ? account : '') || (await getConnectedAccount(activeProvider)) || ''
+          : accountOverride
       if (!connected) {
         setStatus('Connect an EVM wallet.')
         setWalletState(null)
@@ -69,11 +104,11 @@ export function App() {
 
       if (connected !== account) setAccount(connected)
 
-      const details = await readTokenDetails(provider, config.tokenAddress)
+      const details = await readTokenDetails(activeProvider, config.tokenAddress)
       const [balance, allowance, locked] = await Promise.all([
-        readTokenBalance(provider, config.tokenAddress, connected),
-        readAllowance(provider, config.tokenAddress, connected, config.lockAddress),
-        readLockedAmount(provider, config.lockAddress, connected),
+        readTokenBalance(activeProvider, config.tokenAddress, connected),
+        readAllowance(activeProvider, config.tokenAddress, connected, config.lockAddress),
+        readLockedAmount(activeProvider, config.lockAddress, connected),
       ])
 
       setWalletState({
@@ -85,7 +120,7 @@ export function App() {
       })
       setStatus(`Connected as ${shortAddress(connected)}.`)
     },
-    [account, configured, provider],
+    [account, configured, provider, wallets.length],
   )
 
   useEffect(() => {
@@ -115,15 +150,34 @@ export function App() {
   }, [provider, refresh])
 
   async function connect() {
-    if (!provider) return
+    if (wallets.length === 0) {
+      setStatus('No injected EVM wallet detected.')
+      return
+    }
 
+    if (wallets.length > 1 || !provider) {
+      setPickerOpen((open) => !open)
+      setStatus('Choose an EVM wallet.')
+      return
+    }
+
+    await connectSelectedWallet(selectedWallet)
+  }
+
+  async function connectSelectedWallet(wallet: EvmWallet | null) {
+    if (!wallet) return
+
+    setSelectedWalletId(wallet.id)
+    setPickerOpen(false)
+    setAccount('')
+    setWalletState(null)
     setBusy(true)
-    setStatus('Connecting wallet...')
+    setStatus(`Connecting ${wallet.name}...`)
     setTxHash('')
 
     try {
-      const connected = await connectWallet(provider)
-      await refresh(connected)
+      const connected = await connectWallet(wallet.provider)
+      await refresh(connected, wallet.provider)
     } catch (error) {
       setStatus(errorMessage(error))
     } finally {
@@ -160,14 +214,35 @@ export function App() {
           <h1 class="text-xl font-semibold">Lock $BORO</h1>
           <p class="mt-1 text-xs font-medium uppercase text-neutral-500">{chainLabel(config)}</p>
         </div>
-        <button
-          class="h-10 rounded-md bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
-          disabled={!provider || busy}
-          onClick={connect}
-          type="button"
-        >
-          {account ? shortAddress(account) : 'Connect wallet'}
-        </button>
+        <div class="relative">
+          <button
+            class="h-10 rounded-md bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
+            disabled={wallets.length === 0 || busy}
+            onClick={connect}
+            type="button"
+          >
+            {account ? shortAddress(account) : 'Connect wallet'}
+          </button>
+          {pickerOpen && wallets.length > 0 && (
+            <div class="absolute right-0 z-10 mt-2 grid w-64 overflow-hidden rounded-md border border-neutral-200 bg-white text-sm shadow-lg">
+              {wallets.map((wallet) => (
+                <button
+                  class="flex min-w-0 items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={busy}
+                  key={wallet.id}
+                  onClick={() => connectSelectedWallet(wallet)}
+                  type="button"
+                >
+                  <WalletIcon wallet={wallet} />
+                  <span class="min-w-0">
+                    <span class="block truncate font-semibold text-neutral-950">{wallet.name}</span>
+                    {wallet.rdns && <span class="block truncate text-xs text-neutral-500">{wallet.rdns}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div class="mt-4 grid min-w-0 gap-3">
@@ -225,6 +300,18 @@ function Metric({ label, value }: { label: string; value: string }) {
       <dt class="text-xs font-semibold uppercase text-neutral-500">{label}</dt>
       <dd class="mt-1 break-all font-mono text-sm text-neutral-950">{value}</dd>
     </div>
+  )
+}
+
+function WalletIcon({ wallet }: { wallet: EvmWallet }) {
+  if (wallet.icon) {
+    return <img alt="" class="size-8 shrink-0 rounded-md" src={wallet.icon} />
+  }
+
+  return (
+    <span class="grid size-8 shrink-0 place-items-center rounded-md bg-neutral-100 text-xs font-bold text-neutral-600">
+      {wallet.name.slice(0, 1).toUpperCase()}
+    </span>
   )
 }
 
