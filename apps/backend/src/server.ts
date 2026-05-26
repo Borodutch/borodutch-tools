@@ -54,7 +54,7 @@ Bun.serve({
           return json({ error: 'rate_limited', message: 'Too many requests. Please wait and retry.' }, 429)
         }
 
-        return handleClaimApi(request, url)
+        return await handleClaimApi(request, url)
       }
 
       return serveStatic(url)
