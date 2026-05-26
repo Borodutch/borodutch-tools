@@ -78,7 +78,7 @@ export class ClaimService {
     }
   }
 
-  async checkAllocation(input: { solanaAddress: unknown; signatureBase58: unknown }) {
+  async checkAllocation(input: { solanaAddress: unknown; signatureBase58: unknown; diagnostics?: unknown }) {
     if (typeof input.signatureBase58 !== 'string' || input.signatureBase58.length < 32) {
       throw new ClaimError('invalid_signature', 'Signature is required.')
     }
@@ -92,7 +92,7 @@ export class ClaimService {
     })
 
     if (!verification.valid) {
-      logSignatureVerificationFailure('allocation-check', solanaAddress, message, verification)
+      logSignatureVerificationFailure('allocation-check', solanaAddress, message, verification, input.diagnostics)
       throw new ClaimError('invalid_signature', 'Solana signature does not verify for this allocation check.')
     }
 
@@ -171,6 +171,7 @@ export class ClaimService {
     solanaAddress: unknown
     evmRecipient: unknown
     signatureBase58: unknown
+    diagnostics?: unknown
   }) {
     if (typeof input.challengeId !== 'string') {
       throw new ClaimError('invalid_challenge', 'Challenge id is required.')
@@ -203,7 +204,7 @@ export class ClaimService {
     })
 
     if (!verification.valid) {
-      logSignatureVerificationFailure('claim-submit', solanaAddress, challenge.message, verification)
+      logSignatureVerificationFailure('claim-submit', solanaAddress, challenge.message, verification, input.diagnostics)
       throw new ClaimError('invalid_signature', 'Solana signature does not verify for this message and wallet.')
     }
 
@@ -333,16 +334,31 @@ function logSignatureVerificationFailure(
   solanaAddress: string,
   message: string,
   verification: ReturnType<typeof verifySolanaSignatureDetailed>,
+  diagnostics: unknown,
 ) {
+  const clientDiagnostics = parseSignatureDiagnostics(diagnostics)
   console.warn(
     JSON.stringify({
       event: 'solana_signature_verification_failed',
       phase,
       solanaAddress,
       messageDigest: digestMessage(message),
+      clientDiagnostics,
       ...verification,
     }),
   )
+}
+
+function parseSignatureDiagnostics(diagnostics: unknown) {
+  if (!diagnostics || typeof diagnostics !== 'object') return undefined
+
+  const value = diagnostics as Record<string, unknown>
+  return {
+    client: typeof value.client === 'string' ? value.client.slice(0, 80) : undefined,
+    messageDigest: typeof value.messageDigest === 'string' ? value.messageDigest : undefined,
+    signatureByteLength: typeof value.signatureByteLength === 'number' ? value.signatureByteLength : undefined,
+    walletLabel: typeof value.walletLabel === 'string' ? value.walletLabel.slice(0, 80) : undefined,
+  }
 }
 
 export function createClaimService(input: {

@@ -52,6 +52,17 @@ type SubmitResponse = {
   idempotent: boolean
 }
 
+type SignatureProof = {
+  signatureBase58: string
+  diagnostics: {
+    client: string
+    signatureByteLength: number
+    walletLabel: string
+  }
+}
+
+const SOLANA_SIGNATURE_DIAGNOSTIC_CLIENT = 'borodutch-tools-web-2026-05-26'
+
 export function App({
   farcasterSolanaProvider = null,
   miniAppMode = false,
@@ -121,13 +132,20 @@ export function App({
     return connection
   }
 
-  async function signMessage(message: string, wallet = solanaWallet) {
+  async function signMessage(message: string, wallet = solanaWallet): Promise<SignatureProof> {
     if (!wallet) {
       throw new Error(NO_SOLANA_WALLET_MESSAGE)
     }
 
     const signature = await wallet.signMessage(message)
-    return bs58.encode(signature)
+    return {
+      signatureBase58: bs58.encode(signature),
+      diagnostics: {
+        client: SOLANA_SIGNATURE_DIAGNOSTIC_CLIENT,
+        signatureByteLength: signature.length,
+        walletLabel: wallet.label,
+      },
+    }
   }
 
   async function checkAllocation() {
@@ -140,10 +158,17 @@ export function App({
         method: 'POST',
         body: JSON.stringify({ solanaAddress: publicKey }),
       })
-      const signatureBase58 = await signMessage(proof.message, wallet)
+      const signatureProof = await signMessage(proof.message, wallet)
       const nextAllocation = await api<AllocationResponse>('/api/claim/allocation-check', {
         method: 'POST',
-        body: JSON.stringify({ solanaAddress: publicKey, signatureBase58 }),
+        body: JSON.stringify({
+          solanaAddress: publicKey,
+          signatureBase58: signatureProof.signatureBase58,
+          diagnostics: {
+            ...signatureProof.diagnostics,
+            messageDigest: proof.messageDigest,
+          },
+        }),
       })
       setAllocation(nextAllocation)
       setClaim(nextAllocation.existingClaim ?? null)
@@ -165,13 +190,18 @@ export function App({
         method: 'POST',
         body: JSON.stringify({ solanaAddress: connection.publicKey, evmRecipient: recipient }),
       })
+      const signatureProof = await signMessage(nextChallenge.message, connection.wallet)
       const result = await api<SubmitResponse>('/api/claim/submit', {
         method: 'POST',
         body: JSON.stringify({
           challengeId: nextChallenge.challengeId,
           solanaAddress: connection.publicKey,
           evmRecipient: recipient,
-          signatureBase58: await signMessage(nextChallenge.message, connection.wallet),
+          signatureBase58: signatureProof.signatureBase58,
+          diagnostics: {
+            ...signatureProof.diagnostics,
+            messageDigest: nextChallenge.messageDigest,
+          },
         }),
       })
 

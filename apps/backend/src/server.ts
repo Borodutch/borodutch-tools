@@ -118,7 +118,7 @@ async function handleClaimApi(request: Request, url: URL) {
 
   if (request.method === 'POST' && url.pathname === '/api/claim/allocation-check') {
     ensureRuntimeReady()
-    const body = (await request.json()) as { solanaAddress: unknown; signatureBase58: unknown }
+    const body = (await request.json()) as { solanaAddress: unknown; signatureBase58: unknown; diagnostics?: unknown }
     return json(await getClaimService().checkAllocation(body))
   }
 
@@ -135,6 +135,7 @@ async function handleClaimApi(request: Request, url: URL) {
       solanaAddress: unknown
       evmRecipient: unknown
       signatureBase58: unknown
+      diagnostics?: unknown
     }
     return json(await getClaimService().submitClaim(body), 202)
   }
