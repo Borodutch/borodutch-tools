@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { App as ClaimApp } from './claim-app'
 import { getBoroLaunchConfig } from './launch-config'
 import { App as LockApp } from './lock-app'
@@ -15,12 +15,41 @@ export function App() {
           <BoroContractAddress />
         </header>
 
+        <LaunchTweet />
+
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <ClaimApp />
           <LockApp />
         </div>
       </div>
     </main>
+  )
+}
+
+function LaunchTweet() {
+  useEffect(() => {
+    const widgets = (window as typeof window & { twttr?: { widgets?: { load: () => void } } }).twttr?.widgets
+    if (widgets) {
+      widgets.load()
+      return
+    }
+
+    if (document.getElementById('twitter-widgets-js')) return
+
+    const script = document.createElement('script')
+    script.id = 'twitter-widgets-js'
+    script.async = true
+    script.charset = 'utf-8'
+    script.src = 'https://platform.twitter.com/widgets.js'
+    document.body.appendChild(script)
+  }, [])
+
+  return (
+    <section class="min-w-0 overflow-hidden rounded-lg border border-neutral-300 bg-white p-3 shadow-sm">
+      <blockquote class="twitter-tweet mx-auto" data-dnt="true" data-theme="light">
+        <a href="https://x.com/backmeupplz/status/2059067753684963349">BORO launch explanation on X</a>
+      </blockquote>
+    </section>
   )
 }
 

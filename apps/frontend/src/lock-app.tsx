@@ -228,6 +228,10 @@ export function App() {
       )}
 
       <div class="mt-4 grid min-w-0 gap-3">
+        <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-950">
+          Locked $BORO is withdrawable only 1 year after the moment you lock it.
+        </div>
+
         <dl class="grid min-w-0 gap-3 sm:grid-cols-2">
           <Metric label="Available" value={amountLabel(walletState?.balance, walletState)} />
           <Metric label="Currently locked" value={amountLabel(walletState?.locked, walletState)} />
