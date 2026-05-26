@@ -150,6 +150,8 @@ Base mainnet `$BORO` treasury claim distribution can also be operated as an
 on-chain Merkle distributor later. Deployment and operator notes live in
 `docs/boro-merkle-distributor.md`.
 The full production launch checklist lives in `docs/boro-production-launch.md`.
+Farcaster Mini App manifest, asset, and wallet behavior notes live in
+`docs/farcaster-mini-app.md`.
 
 Base mainnet `$BORO` locking uses an upgradeable one-year position contract.
 Deployment, trust model, storage layout, and metadata notes live in

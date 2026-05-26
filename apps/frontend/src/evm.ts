@@ -104,8 +104,9 @@ export function createEvmWalletStore(): Store {
 export function getEvmWalletOptions(
   win: Pick<Window, 'ethereum'> = window,
   providerDetails: readonly EIP6963ProviderDetail[] = [],
+  farcasterWallet?: EvmWalletOption | null,
 ): EvmWalletOption[] {
-  const options: EvmWalletOption[] = []
+  const options: EvmWalletOption[] = farcasterWallet ? [farcasterWallet] : []
   for (const detail of providerDetails) {
     const provider = detail.provider as unknown
     if (!isEthereumProvider(provider)) continue

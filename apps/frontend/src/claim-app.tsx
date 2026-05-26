@@ -1,7 +1,12 @@
 import bs58 from 'bs58'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { formatBoroAllocation } from './claim-format'
-import { connectSolanaWallet, NO_SOLANA_WALLET_MESSAGE, type SolanaWallet } from './solana-wallet'
+import {
+  connectSolanaWallet,
+  NO_SOLANA_WALLET_MESSAGE,
+  type FarcasterSolanaProvider,
+  type SolanaWallet,
+} from './solana-wallet'
 
 type ConfigResponse = {
   enabled: boolean
@@ -47,7 +52,13 @@ type SubmitResponse = {
   idempotent: boolean
 }
 
-export function App() {
+export function App({
+  farcasterSolanaProvider = null,
+  miniAppMode = false,
+}: {
+  farcasterSolanaProvider?: FarcasterSolanaProvider | null
+  miniAppMode?: boolean
+}) {
   const [config, setConfig] = useState<ConfigResponse | null>(null)
   const [walletAddress, setWalletAddress] = useState('')
   const [recipient, setRecipient] = useState('')
@@ -98,7 +109,7 @@ export function App() {
   }, [solanaWallet])
 
   async function getSolanaPublicKey() {
-    const connection = await connectSolanaWallet()
+    const connection = await connectSolanaWallet(window, 1500, { farcasterProvider: farcasterSolanaProvider, miniAppMode })
     setSolanaWallet(connection.wallet)
 
     if (walletAddress !== connection.publicKey) {
@@ -173,7 +184,7 @@ export function App() {
   }
 
   return (
-    <section class="min-w-0 w-[calc(100vw-2rem)] rounded-lg border border-neutral-300 bg-white p-4 shadow-sm md:w-auto">
+    <section class="min-w-0 w-full max-w-full rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold">Claim $BORO</h1>

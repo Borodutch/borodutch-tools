@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@farcaster/miniapp-sdk": "^0.3.0",
     "bs58": "^6.0.0",
     "mipd": "^0.0.7",
     "preact": "^10.29.1"
