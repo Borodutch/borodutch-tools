@@ -11,7 +11,7 @@ import {
   getMissingRuntimeEnv,
 } from '../src/claim/chainSender.ts'
 import { createClaimStore, getClaimRuntimeReady } from '../src/claim/runtime.ts'
-import { verifySolanaSignature } from '../src/claim/signature.ts'
+import { verifySolanaSignature, verifySolanaSignatureDetailed } from '../src/claim/signature.ts'
 import { ClaimService } from '../src/claim/service.ts'
 import { snapshotMetadata } from '../src/claim/snapshot.ts'
 import type { TokenSender } from '../src/claim/types.ts'
@@ -78,6 +78,50 @@ describe('validation and signature binding', () => {
         signatureBase58: signature,
       }),
     ).toBe(false)
+  })
+
+  it('returns structured Solana signature verification diagnostics', () => {
+    const wallet = Keypair.generate()
+    const message = 'hello'
+    const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), wallet.secretKey))
+
+    expect(
+      verifySolanaSignatureDetailed({
+        solanaAddress: wallet.publicKey.toBase58(),
+        message,
+        signatureBase58: signature,
+      }),
+    ).toMatchObject({
+      valid: true,
+      reason: 'ok',
+      messageByteLength: 5,
+      publicKeyByteLength: 32,
+      signatureByteLength: 64,
+    })
+
+    expect(
+      verifySolanaSignatureDetailed({
+        solanaAddress: wallet.publicKey.toBase58(),
+        message,
+        signatureBase58: bs58.encode(new Uint8Array([1, 2, 3])),
+      }),
+    ).toMatchObject({
+      valid: false,
+      reason: 'invalid_signature_length',
+      signatureByteLength: 3,
+    })
+
+    expect(
+      verifySolanaSignatureDetailed({
+        solanaAddress: wallet.publicKey.toBase58(),
+        message: 'different',
+        signatureBase58: signature,
+      }),
+    ).toMatchObject({
+      valid: false,
+      reason: 'verify_false',
+      signatureByteLength: 64,
+    })
   })
 
   it('verifies allocation-check signatures before returning allocation data', async () => {

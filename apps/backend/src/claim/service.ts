@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { calculateClaimAmountRaw, parsePositiveRawAmount } from './math.ts'
 import { buildAllocationCheckMessage, buildClaimMessage, digestMessage } from './message.ts'
-import { verifySolanaSignature } from './signature.ts'
+import { verifySolanaSignatureDetailed } from './signature.ts'
 import {
   BORO_MAINNET_CLAIM_CONFIG,
   DOMAIN,
@@ -85,13 +85,14 @@ export class ClaimService {
 
     const { solanaAddress, message } = this.getAllocationCheckMessage(input.solanaAddress)
 
-    if (
-      !verifySolanaSignature({
-        solanaAddress,
-        message,
-        signatureBase58: input.signatureBase58,
-      })
-    ) {
+    const verification = verifySolanaSignatureDetailed({
+      solanaAddress,
+      message,
+      signatureBase58: input.signatureBase58,
+    })
+
+    if (!verification.valid) {
+      logSignatureVerificationFailure('allocation-check', solanaAddress, message, verification)
       throw new ClaimError('invalid_signature', 'Solana signature does not verify for this allocation check.')
     }
 
@@ -195,13 +196,14 @@ export class ClaimService {
       throw new ClaimError('challenge_mismatch', 'Signed challenge does not match the submitted wallet or recipient.')
     }
 
-    if (
-      !verifySolanaSignature({
-        solanaAddress,
-        message: challenge.message,
-        signatureBase58: input.signatureBase58,
-      })
-    ) {
+    const verification = verifySolanaSignatureDetailed({
+      solanaAddress,
+      message: challenge.message,
+      signatureBase58: input.signatureBase58,
+    })
+
+    if (!verification.valid) {
+      logSignatureVerificationFailure('claim-submit', solanaAddress, challenge.message, verification)
       throw new ClaimError('invalid_signature', 'Solana signature does not verify for this message and wallet.')
     }
 
@@ -324,6 +326,23 @@ export class ClaimError extends Error {
   ) {
     super(message)
   }
+}
+
+function logSignatureVerificationFailure(
+  phase: 'allocation-check' | 'claim-submit',
+  solanaAddress: string,
+  message: string,
+  verification: ReturnType<typeof verifySolanaSignatureDetailed>,
+) {
+  console.warn(
+    JSON.stringify({
+      event: 'solana_signature_verification_failed',
+      phase,
+      solanaAddress,
+      messageDigest: digestMessage(message),
+      ...verification,
+    }),
+  )
 }
 
 export function createClaimService(input: {
