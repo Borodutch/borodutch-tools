@@ -1,4 +1,9 @@
 {
+  "accountAssociation": {
+    "header": "eyJmaWQiOjEzNTYsInR5cGUiOiJhdXRoIiwia2V5IjoiMHg4ZDUwNDRkOWVlN2NlQzQxRUVlQmVGMTJCNzQ5RTYyRTJBYjlGMTMxIn0",
+    "payload": "eyJkb21haW4iOiJ0b29scy5ib3JvZHV0Y2guY29tIn0",
+    "signature": "MIrHSNPuzitqEE6AHq5WcLGSFwR5lEnV/GeB3jfseRFoN/Q7B54/MdrqvIyo4B2YbXgr4CN0LBllX82MHfpO+Rs="
+  },
   "miniapp": {
     "version": "1",
     "name": "Borodutch Tools",

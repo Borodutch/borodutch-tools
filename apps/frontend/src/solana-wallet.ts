@@ -325,20 +325,36 @@ function signatureStringBytes(signature: string): Uint8Array {
     return Uint8Array.from(value.slice(2).match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? [])
   }
 
+  const candidates: Uint8Array[] = []
+  if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(value)) {
+    try {
+      candidates.push(base58Decode(value))
+    } catch {}
+  }
+
   const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
   if (/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
     try {
       const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
       const binary = atob(padded)
       if (binary.length > 0) {
-        return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+        candidates.push(Uint8Array.from(binary, (char) => char.charCodeAt(0)))
       }
     } catch {
       // Fall through to base58; Farcaster hosts may choose either encoding.
     }
   }
 
-  return base58Decode(value)
+  const signatureCandidate = candidates.find((candidate) => candidate.length === 64)
+  if (signatureCandidate) return signatureCandidate
+
+  const base64Candidate = candidates[1]
+  if (base64Candidate) return base64Candidate
+
+  const base58Candidate = candidates[0]
+  if (base58Candidate) return base58Candidate
+
+  throw new Error('Wallet did not return a valid message signature.')
 }
 
 function base58Decode(value: string): Uint8Array {

@@ -9,14 +9,14 @@
 
 The root HTML includes both `fc:miniapp` and backward-compatible `fc:frame` metadata. The embed button title is `Claim $BORO` and launches `https://tools.borodutch.com/?miniApp=true`, which lets the app skip the X embed and call the Farcaster SDK `ready` action as soon as the UI is interactive.
 
-## Manual account association
+## Account association
 
-The manifest intentionally does not include `accountAssociation` yet because it must be signed by the Farcaster account that owns the app/domain. To finish verification:
+The manifest includes the signed `accountAssociation` for `tools.borodutch.com`. If the app ownership changes or the domain migrates:
 
 1. Open `https://farcaster.xyz/~/developers/new` while signed in to the owning Farcaster account.
 2. Enter the domain exactly as `tools.borodutch.com`.
 3. Generate the signed account association.
-4. Add the returned `accountAssociation` object to `apps/frontend/public/.well-known/farcaster.json` next to `miniapp`.
+4. Replace the existing `accountAssociation` object in `apps/frontend/public/.well-known/farcaster.json`.
 5. Redeploy and verify `https://tools.borodutch.com/.well-known/farcaster.json` returns the signed object.
 
 If using Farcaster Hosted Manifests instead, create the hosted manifest at `https://farcaster.xyz/~/developers/mini-apps/manifest`, copy the hosted manifest ID, and replace the static manifest route with a `307` redirect to `https://api.farcaster.xyz/miniapps/hosted-manifest/<hosted-manifest-id>`.

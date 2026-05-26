@@ -41,10 +41,12 @@ describe('Farcaster Mini App metadata', () => {
     const manifest = JSON.parse(
       readFileSync(join(import.meta.dir, '../public/.well-known/farcaster.json'), 'utf8'),
     ) as {
+      accountAssociation: Record<string, unknown>
       miniapp: Record<string, unknown>
       frame: Record<string, unknown>
     }
 
+    expect(manifest.accountAssociation.payload).toBe('eyJkb21haW4iOiJ0b29scy5ib3JvZHV0Y2guY29tIn0')
     expect(manifest.miniapp.version).toBe('1')
     expect(manifest.miniapp.name).toBe('Borodutch Tools')
     expect(manifest.miniapp.homeUrl).toBe(FARCASTER_MINI_APP_URL)

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import bs58 from 'bs58'
 import {
   connectSolanaWallet,
   extractSignatureBytes,
@@ -78,6 +79,19 @@ describe('solana wallet provider discovery', () => {
     expect(connected.publicKey).toBe('FarcasterPublicKey')
     expect(connected.wallet.label).toBe('Farcaster Solana wallet')
     await expect(connected.wallet.signMessage('hello')).resolves.toEqual(new Uint8Array([7, 8, 9]))
+  })
+
+  it('prefers 64-byte Base58 Farcaster signatures over ambiguous Base64 decoding', async () => {
+    const win = testWindow()
+    const signature = Uint8Array.from({ length: 64 }, (_, index) => index + 1)
+    const farcasterProvider = {
+      request: async () => ({ publicKey: 'FarcasterPublicKey' }),
+      signMessage: async () => ({ signature: bs58.encode(signature) }),
+    }
+
+    const connected = await connectSolanaWallet(win, 1, { farcasterProvider, miniAppMode: true })
+
+    await expect(connected.wallet.signMessage('hello')).resolves.toEqual(signature)
   })
 
   it('signs with injected providers that return direct signature bytes', async () => {
