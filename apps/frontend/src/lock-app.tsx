@@ -69,12 +69,12 @@ export function App({
     async (accountOverride?: string, providerOverride = provider) => {
       if (!providerOverride) {
         setStatus('No injected EVM wallet detected.')
-        return
+        return null
       }
 
       if (!configured) {
         setStatus('Lock contract pending.')
-        return
+        return null
       }
 
       const connected =
@@ -83,7 +83,7 @@ export function App({
         setStatus('Connect an EVM wallet.')
         setWalletState(null)
         if (account) setAccount('')
-        return
+        return null
       }
 
       if (connected !== account) setAccount(connected)
@@ -95,14 +95,16 @@ export function App({
         readLockedAmount(providerOverride, config.lockAddress, connected),
       ])
 
-      setWalletState({
+      const nextWalletState = {
         allowance,
         balance,
         decimals: details.decimals,
         locked,
         symbol: details.symbol,
-      })
+      }
+      setWalletState(nextWalletState)
       setStatus(`Connected as ${shortAddress(connected)}.`)
+      return nextWalletState
     },
     [account, configured, provider],
   )
@@ -214,6 +216,8 @@ export function App({
   async function submitLockAction() {
     if (!provider || !account || parsedLockAmount <= 0n) return
 
+    const amount = parsedLockAmount
+    const stateBeforeSubmit = walletState
     setBusy(true)
     setStatus(needsApproval ? 'Submitting approval...' : 'Submitting lock...')
     setTxHash('')
@@ -222,19 +226,48 @@ export function App({
       await ensureConfiguredChain(provider, config)
       const approving = needsApproval
       const hash = needsApproval
-        ? await approveToken(provider, config.tokenAddress, account, config.lockAddress, parsedLockAmount)
-        : await lockToken(provider, config.lockAddress, account, parsedLockAmount)
+        ? await approveToken(provider, config.tokenAddress, account, config.lockAddress, amount)
+        : await lockToken(provider, config.lockAddress, account, amount)
       setTxHash(hash)
       setStatus(approving ? 'Approval submitted. Waiting for confirmation...' : 'Lock submitted. Waiting for confirmation...')
       await waitForTransactionReceipt(provider, hash)
-      await refresh(account, provider)
+      setStatus(approving ? 'Approval confirmed. Refreshing balances...' : 'Lock confirmed. Refreshing balances...')
+      const refreshed = await refreshUntilExpected(account, provider, (nextState) =>
+        approving
+          ? nextState.allowance >= amount
+          : !stateBeforeSubmit ||
+            nextState.locked >= stateBeforeSubmit.locked + amount ||
+            nextState.balance <= stateBeforeSubmit.balance - amount,
+      )
       if (!approving) setLockAmount('')
-      setStatus(approving ? 'Approval confirmed.' : 'Lock confirmed.')
+      setStatus(
+        refreshed
+          ? approving
+            ? 'Approval confirmed.'
+            : 'Lock confirmed.'
+          : 'Transaction confirmed. Balances are still catching up; retry refresh in a moment.',
+      )
     } catch (error) {
       setStatus(errorMessage(error))
     } finally {
       setBusy(false)
     }
+  }
+
+  async function refreshUntilExpected(
+    accountOverride: string,
+    providerOverride: EthereumProvider,
+    isExpected: (nextState: WalletState) => boolean,
+  ) {
+    const maxAttempts = 8
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const nextState = await refresh(accountOverride, providerOverride)
+      if (nextState && isExpected(nextState)) return nextState
+      if (attempt < maxAttempts - 1) await delay(1500)
+    }
+
+    return null
   }
 
   return (
@@ -347,4 +380,8 @@ function errorMessage(error: unknown): string {
     return String((error as { message: unknown }).message)
   }
   return 'Request failed.'
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
