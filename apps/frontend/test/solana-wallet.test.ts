@@ -81,7 +81,26 @@ describe('solana wallet provider discovery', () => {
     await expect(connected.wallet.signMessage('hello')).resolves.toEqual(new Uint8Array([7, 8, 9]))
   })
 
-  it('prefers 64-byte Base58 Farcaster signatures over ambiguous Base64 decoding', async () => {
+  it('prefers Farcaster Base64 signatures over ambiguous Base58 decoding', async () => {
+    const win = testWindow()
+    const signature = new Uint8Array([
+      214, 5, 158, 228, 106, 123, 158, 7, 39, 234, 103, 193, 113, 55, 129, 92, 243, 242, 167, 219,
+      92, 137, 199, 131, 197, 33, 209, 118, 226, 160, 40, 241, 134, 126, 54, 15, 1, 199, 140, 162,
+      128, 75, 201, 187, 50, 195, 82, 231, 240, 52, 110, 225, 224, 91, 168, 23, 102, 124, 23, 125,
+      93, 84, 56, 105,
+    ])
+    const ambiguousBase64 = '1gWe5Gp7ngcn6mfBcTeBXPPyp9tciceDxSHRduKgKPGGfjYPAceMooBLybsyw1Ln8DRu4eBbqBdmfBd9XVQ4aQ'
+    const farcasterProvider = {
+      request: async () => ({ publicKey: 'FarcasterPublicKey' }),
+      signMessage: async () => ({ signature: ambiguousBase64 }),
+    }
+
+    const connected = await connectSolanaWallet(win, 1, { farcasterProvider, miniAppMode: true })
+
+    await expect(connected.wallet.signMessage('hello')).resolves.toEqual(signature)
+  })
+
+  it('falls back to Base58 Farcaster signatures when Base64 does not decode to a signature', async () => {
     const win = testWindow()
     const signature = Uint8Array.from({ length: 64 }, (_, index) => index + 1)
     const farcasterProvider = {

@@ -61,7 +61,17 @@ Bun.serve({
       return serveStatic(url)
     } catch (error) {
       if (error instanceof ClaimError) {
-        return json({ error: error.code, message: error.message, details: error.details }, statusForClaimError(error.code))
+        const status = statusForClaimError(error.code)
+        console.warn(
+          JSON.stringify({
+            event: 'claim_api_error',
+            path: url.pathname,
+            code: error.code,
+            status,
+            message: error.message,
+          }),
+        )
+        return json({ error: error.code, message: error.message, details: error.details }, status)
       }
 
       if (error instanceof Error) {
