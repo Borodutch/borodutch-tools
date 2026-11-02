@@ -28,10 +28,9 @@ describe('solana wallet provider discovery', () => {
     const provider = injectedProvider('DelayedPublicKey')
     const pendingWallet = waitForSolanaWalletProvider(win, 500)
 
-    setTimeout(() => {
-      win.phantom = { solana: provider }
-      win.dispatchEvent(new Event('phantom#initialized'))
-    }, 10)
+    // The wait has started (nothing was there yet); the provider shows up afterwards
+    win.phantom = { solana: provider }
+    win.dispatchEvent(new Event('phantom#initialized'))
 
     const wallet = await pendingWallet
 
@@ -43,13 +42,11 @@ describe('solana wallet provider discovery', () => {
     const win = testWindow()
     const pendingWallet = waitForSolanaWalletProvider(win, 500)
 
-    setTimeout(() => {
-      win.dispatchEvent(
-        new CustomEvent('wallet-standard:register-wallet', {
-          detail: standardWallet('StandardPublicKey', new Uint8Array([10, 11, 12])),
-        }),
-      )
-    }, 10)
+    win.dispatchEvent(
+      new CustomEvent('wallet-standard:register-wallet', {
+        detail: standardWallet('StandardPublicKey', new Uint8Array([10, 11, 12])),
+      }),
+    )
 
     const wallet = await pendingWallet
 

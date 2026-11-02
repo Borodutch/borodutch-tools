@@ -16,7 +16,8 @@ const viemMocks = vi.hoisted(() => {
     txCounter += 1
     const txHash = `0x${txCounter}`
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Yield past every pending microtask so an unserialized second send would overlap this one
+    await new Promise((resolve) => setImmediate(resolve))
     activeWrites -= 1
     return txHash
   })
