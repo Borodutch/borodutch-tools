@@ -1,7 +1,7 @@
 # Easypanel passes every service env var as a build arg. Only the public VITE_* values are
 # declared below, so secrets (BORO_CLAIM_SENDER_PRIVATE_KEY, DATABASE_URL) are runtime-only and
 # never land in the image (Nixpacks wrote all of them into the image's ENV).
-FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS deps
+FROM node:22.23.5-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb AS deps
 COPY --from=oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -23,7 +23,7 @@ COPY apps/backend apps/backend
 RUN bun --filter @borodutch-tools/backend build
 
 # Runtime: production dependencies only (vite/vitest/postcss/tailwind and their trees stay out of the image)
-FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+FROM node:22.23.5-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
 COPY --from=oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
 COPY package.json bun.lock ./
