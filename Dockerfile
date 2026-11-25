@@ -30,6 +30,8 @@ COPY package.json bun.lock ./
 COPY apps/frontend/package.json apps/frontend/
 COPY apps/backend/package.json apps/backend/
 RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked bun install --frozen-lockfile --production
+# bun installs and runs everything, so drop the base image's unused npm and its vulnerable bundled deps
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 # From the backend stage, so its typecheck still gates the image
 COPY --from=backend /app/apps/backend apps/backend
 COPY --from=frontend /app/apps/frontend/dist apps/frontend/dist
